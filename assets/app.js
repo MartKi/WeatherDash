@@ -560,6 +560,11 @@ function renderPlan(d) {
   const evening = today.sunset ? hhmm(today.sunset) : "20:00";
   const pPill = `Sol på terrassen <b>${sunH} timer</b> · vand tidligt (før kl. 9) eller efter <b>kl. ${evening}</b>`;
 
+  const mini = (svg) => svg.replace("<svg", '<svg class="chip-ico"');
+  setChip("#chip-plan",
+    `${mini(ICONS.car)} ${fmt(dAvg)} · ${mini(ICONS.hike)} ${fmt(oAvg)} · ${mini(ICONS.plant)} ${fmt(pScore)}`,
+    scoreClass(Math.min(dAvg, oAvg, pScore)));
+
   $("#plan-grid").innerHTML =
     planCard({ icon: ICONS.car, title: "Kørsel", sub: "Næste 12 timer", score: dAvg, verdict: verdictDrive(dAvg), notes: dNotes.slice(0, 4), pill: dPill }) +
     planCard({ icon: ICONS.hike, title: "Udendørs", sub: "Næste 12 timer", score: oAvg, verdict: verdictOut(oAvg), notes: oNotes.slice(0, 5), pill: oPill }) +
@@ -636,6 +641,11 @@ function renderChart(hours, day) {
         <stop offset="1" stop-color="var(--warm)" stop-opacity="0"/>
       </linearGradient></defs>
       ${nights.join("")}${grid}${fill}<path class="templine" d="${curve}"/>${bars}${dots}${labels}</svg>`;
+  const pSum = hours.reduce((x, h) => x + h.precip, 0);
+  setChip("#chip-today",
+    `${Math.round(Math.min(...temps))}–${Math.round(Math.max(...temps))}° · ${pSum >= 0.05 ? `${fmt(pSum)} mm` : "tørt"}`,
+    pSum >= 3 ? "o" : "");
+
   $("#today-sub").textContent = day
     ? `${dayName(day.key)} ${dayDate(day.key)} — ${hours.length} timer. Skyggede felter er nat.`
     : "Temperatur, nedbør og vind de næste 24 timer. Tryk på en time for alle detaljer.";
@@ -722,6 +732,9 @@ function renderWeek(d) {
       </span>
     </button>`;
   }).join("");
+  const wRain = d.days.reduce((x, day) => x + day.precip, 0);
+  setChip("#chip-week", `${Math.round(lo)}–${Math.round(hi)}° · ${fmt(wRain)} mm`, "");
+
   $("#week").querySelectorAll(".day").forEach((b) => b.addEventListener("click", () => selectDay(+b.dataset.day)));
 }
 
@@ -735,6 +748,10 @@ function renderPlants(d) {
   const frostDay = d.days.find((x) => x.tmin <= 2);
   const windDay = d.days.find((x) => x.gust >= 14);
   const wetDay = d.days.find((x) => x.precip >= 15);
+
+  setChip("#chip-plant",
+    w.deficit < 1 ? "Ingen vanding i dag" : `Vand ${w.ml} ml i dag`,
+    w.tone);
 
   $("#plant-top").innerHTML = [
     ["Vanding i dag", `${w.ml} ml`, `pr. 25 cm potte · ${fmt(w.deficit)} l/m²`],
@@ -1092,7 +1109,7 @@ function setChip(id, text, tone) {
   const el = $(id);
   if (!el) return;
   el.className = "sh-chip" + (tone ? ` ${tone}` : "");
-  el.textContent = text || "";
+  el.innerHTML = text || "";        // kun indhold vi selv bygger
   el.hidden = !text;
 }
 

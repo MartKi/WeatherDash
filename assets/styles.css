@@ -163,6 +163,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
   background: var(--surface); border: 1px solid var(--line);
   max-width: 44%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.sh-chip .chip-ico { width: 13px; height: 13px; vertical-align: -2px; opacity: .75; }
 .sh-chip.g { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .sh-chip.o { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 .sh-chip.b { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
@@ -171,10 +172,18 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .section[open] > .section-head .sh-chip { display: none; }
 
 @media (max-width: 560px) {
-  .section-head { gap: 10px; padding: 10px 8px; margin: 0 -8px; }
-  .sh-chip { max-width: 58%; font-size: 12px; padding: 4px 9px; }
-  /* På smal skærm vejer statussen tungere end den forklarende undertekst,
-     som til gengæld dukker op, når sektionen åbnes. */
+  /* Lange overskrifter som "Prognosesikkerhed" kan ikke ombrydes, så chippen
+     får sin egen række i stedet for at presse titlen. */
+  .section-head {
+    display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 0;
+    grid-template-areas: "text chev" "chip chip";
+    padding: 10px 8px; margin: 0 -8px;
+  }
+  .sh-text { grid-area: text; }
+  .sh-chev { grid-area: chev; align-self: center; }
+  .sh-chip { grid-area: chip; justify-self: start; margin-top: 8px; max-width: 100%; font-size: 12px; padding: 4px 9px; }
+  /* Statussen vejer tungere end den forklarende undertekst, som til gengæld
+     dukker op, når sektionen åbnes. */
   .section:not([open]) > .section-head .section-sub { display: none; }
 }
 .card {
@@ -488,6 +497,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
   .win { grid-template-columns: 1fr; gap: 6px; }
 }
 @media (max-width: 560px) {
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
   main { padding: 18px 14px 48px; }
   .topbar-inner { padding: 10px 14px; gap: 10px; }
   .search { order: 3; max-width: none; flex-basis: 100%; margin-left: 0; }
