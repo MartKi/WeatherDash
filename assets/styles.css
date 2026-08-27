@@ -303,16 +303,25 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .air-card { padding: 18px; display: grid; gap: 18px; }
 .air-status { margin: 0; color: var(--text-2); font-size: 13.5px; }
 #air-body { display: grid; gap: 18px; }
-.air-top { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); }
-.air-top .aq-hero { border-left-width: 3px; border-left-style: solid; border-left-color: var(--line); }
-.aq-hero .v { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
-.aq-band { font-size: 13.5px; font-weight: 600; }
-.air-top .aq-t1 { border-left-color: var(--aq1); } .aq-t1 .aq-band { color: var(--aq1); }
-.air-top .aq-t2 { border-left-color: var(--aq2); } .aq-t2 .aq-band { color: var(--aq2); }
-.air-top .aq-t3 { border-left-color: var(--aq3); } .aq-t3 .aq-band { color: var(--aq3); }
-.air-top .aq-t4 { border-left-color: var(--aq4); } .aq-t4 .aq-band { color: var(--aq4); }
-.air-top .aq-t5 { border-left-color: var(--aq5); } .aq-t5 .aq-band { color: var(--aq5); }
-.air-top .aq-t6 { border-left-color: var(--aq6); } .aq-t6 .aq-band { color: var(--aq6); }
+.air-top { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(184px, 1fr)); }
+.air-top .aq-tile { border-left-width: 3px; border-left-style: solid; border-left-color: var(--line); }
+/* Vurderingsordet står altid på sin egen linje — ellers ombryder nogle felter
+   og andre ikke, alt efter hvor langt tallet og bandet tilfældigvis er. */
+.aq-tile .v { display: block; }
+.aq-tile .aq-band { display: block; margin-top: 3px; }
+.aq-band { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.air-top .aq-t1 { border-left-color: var(--aq1); }
+.aq-t1 .aq-band { color: var(--aq1); }
+.air-top .aq-t2 { border-left-color: var(--aq2); }
+.aq-t2 .aq-band { color: var(--aq2); }
+.air-top .aq-t3 { border-left-color: var(--aq3); }
+.aq-t3 .aq-band { color: var(--aq3); }
+.air-top .aq-t4 { border-left-color: var(--aq4); }
+.aq-t4 .aq-band { color: var(--aq4); }
+.air-top .aq-t5 { border-left-color: var(--aq5); }
+.aq-t5 .aq-band { color: var(--aq5); }
+.air-top .aq-t6 { border-left-color: var(--aq6); }
+.aq-t6 .aq-band { color: var(--aq6); }
 
 .pollen-block { display: grid; gap: 10px; }
 .pollen-list { display: grid; gap: 8px; }

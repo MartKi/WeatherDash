@@ -177,6 +177,29 @@ function airUrl(p) {
   return `${AIR}?${q}`;
 }
 
+/* EEA's grænser pr. stof i µg/m³ (PM vurderes på 24-timers snit, gasser på timen).
+   Bruges til at placere hvert stof på samme skala som hovedindekset. Open-Meteos
+   egne del-indeks foretrækkes, når de kan hentes — se loadAirIdx. */
+const AQ_SUB = [
+  { key: "pm25", api: "european_aqi_pm2_5", steps: [10, 20, 25, 50, 75] },
+  { key: "pm10", api: "european_aqi_pm10", steps: [20, 40, 50, 100, 150] },
+  { key: "o3", api: "european_aqi_ozone", steps: [50, 100, 130, 240, 380] },
+  { key: "no2", api: "european_aqi_nitrogen_dioxide", steps: [40, 90, 120, 230, 340] }
+];
+/* Et repræsentativt indekstal midt i båndet, så aqiBand() giver samme navn og farve. */
+const subIndex = (v, steps) => (v === null ? null : steps.filter((t) => v >= t).length * 20 + 10);
+
+async function loadAirIdx(place) {
+  const q = new URLSearchParams({
+    latitude: place.lat, longitude: place.lon, timezone: "auto", forecast_days: 1,
+    hourly: AQ_SUB.map((x) => x.api).join(",")
+  });
+  const res = await fetch(`${AIR}?${q}`);
+  const js = await res.json().catch(() => null);
+  if (!res.ok || !js || js.error || !js.hourly) throw new Error("del-indeks utilgængeligt");
+  return js;
+}
+
 async function loadAir(place) {
   const res = await fetch(airUrl(place));
   const js = await res.json().catch(() => null);
@@ -211,6 +234,12 @@ function shapeAir(raw, fromISO) {
     aqiPeak: peak("european_aqi"),
     pm25: val("pm2_5", i), pm10: val("pm10", i),
     o3: val("ozone", i), no2: val("nitrogen_dioxide", i),
+    idx: {
+      pm25: subIndex(val("pm2_5", i), AQ_SUB[0].steps),
+      pm10: subIndex(val("pm10", i), AQ_SUB[1].steps),
+      o3: subIndex(val("ozone", i), AQ_SUB[2].steps),
+      no2: subIndex(val("nitrogen_dioxide", i), AQ_SUB[3].steps)
+    },
     pollen
   };
 }
@@ -791,6 +820,17 @@ function renderAir() {
   if (!a) { status.hidden = false; body.hidden = true; return; }
   status.hidden = true; body.hidden = false;
 
+  /* Alle fem felter bygges ens: tal, vurdering fra EEA's indeks, og en undertekst.
+     Mangler del-indekset (uden for Europa), vises tallet uden vurdering. */
+  const tile = (label, value, sub, idx, hero) => {
+    const b = typeof idx === "number" && isFinite(idx) ? aqiBand(idx) : null;
+    return `<div class="stat aq-tile${hero ? " aq-hero" : ""}${b ? ` aq-t${b.tone}` : ""}">
+      <div class="k">${label}</div>
+      <div class="v">${value}${b ? ` <span class="aq-band">${b.name}</span>` : ""}</div>
+      <div class="s">${sub}</div>
+    </div>`;
+  };
+
   const tiles = [];
   if (a.aqi !== null) {
     const b = aqiBand(a.aqi);
@@ -800,20 +840,20 @@ function renderAir() {
     setChip("#chip-air",
       `${b.name}${wl >= 2 ? ` · ${worstPollen.name.toLowerCase()} ${POLLEN_BANDS[wl].toLowerCase()}` : ""}`,
       b.tone <= 2 && wl < 3 ? "g" : b.tone >= 4 || wl >= 4 ? "b" : "o");
-    tiles.push(`<div class="stat aq-hero aq-t${b.tone}">
-      <div class="k">Luftkvalitet nu</div>
-      <div class="v">${Math.round(a.aqi)} <span class="aq-band">${b.name}</span></div>
-      <div class="s">Europæisk indeks${a.aqiPeak ? ` · dagens værste ${Math.round(a.aqiPeak.v)} kl. ${hhmm(a.aqiPeak.t)}` : ""}</div>
-    </div>`);
+    tiles.push(tile("Luftkvalitet nu", `${Math.round(a.aqi)}`,
+      `Samlet europæisk indeks${a.aqiPeak ? ` · dagens værste ${Math.round(a.aqiPeak.v)} kl. ${hhmm(a.aqiPeak.t)}` : ""}`,
+      a.aqi, true));
   }
-  const comp = [
-    ["PM2,5", a.pm25, "µg/m³", "fine partikler"],
-    ["PM10", a.pm10, "µg/m³", "grove partikler"],
-    ["Ozon", a.o3, "µg/m³", "O₃"],
-    ["Kvælstofdioxid", a.no2, "µg/m³", "NO₂, mest fra trafik"]
-  ].filter(([, v]) => v !== null);
-  comp.forEach(([k, v, unit, sub]) => tiles.push(
-    `<div class="stat"><div class="k">${k}</div><div class="v">${fmt(v)} <small>${unit}</small></div><div class="s">${sub}</div></div>`));
+
+  const unit = ' <small>µg/m³</small>';
+  [
+    ["PM2,5", a.pm25, a.idx.pm25, "fine partikler · vurderet på 24-timers snit"],
+    ["PM10", a.pm10, a.idx.pm10, "grove partikler · vurderet på 24-timers snit"],
+    ["Ozon", a.o3, a.idx.o3, "O₃ · vurderet på seneste time"],
+    ["Kvælstofdioxid", a.no2, a.idx.no2, "NO₂, mest fra trafik · seneste time"]
+  ].filter(([, v]) => v !== null)
+   .forEach(([label, v, idx, sub]) => tiles.push(tile(label, fmt(v) + unit, sub, idx)));
+
   $("#air-top").innerHTML = tiles.join("");
 
   /* Pollen: kun arter med tal. Uden for Europa mangler de helt. */
@@ -1155,6 +1195,8 @@ async function loadAirInto(place, seq, fromISO, demo) {
     const raw = demo ? demoAir(fromISO) : await loadAir(place);
     if (seq !== loadSeq) return;
     state.air = shapeAir(raw, fromISO);
+    if (!demo) await upgradeAirIdx(place, seq, state.air);
+    if (seq !== loadSeq) return;
     renderAir();
     if (state.data) renderPlan(state.data);   // luften kan ændre udendørs-rådet
   } catch (e) {
@@ -1318,6 +1360,25 @@ function demoData(place) {
     },
     hourly, daily, _place: place
   };
+}
+
+/* Open-Meteo beregner selv EEA's del-indeks pr. stof. Kan de hentes, foretrækkes
+   de frem for vores egen tabel — de følger EEA, hvis grænserne revideres. */
+async function upgradeAirIdx(place, seq, air) {
+  try {
+    const js = await loadAirIdx(place);
+    if (seq !== loadSeq) return;
+    const H = js.hourly;
+    let i = H.time.indexOf(air.t);
+    if (i < 0) i = H.time.findIndex((t) => t >= air.t);
+    if (i < 0) return;
+    AQ_SUB.forEach((x) => {
+      const col = H[x.api];
+      const v = Array.isArray(col) ? col[i] : null;
+      if (typeof v === "number" && isFinite(v)) air.idx[x.key] = v;
+    });
+    air.official = true;
+  } catch { /* beholder vurderingen fra vores egen tabel */ }
 }
 
 /* Syntetiske luft- og pollental til demo-visningen (sensommer i Danmark). */
