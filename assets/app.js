@@ -3,6 +3,7 @@
 
 const API = "https://api.open-meteo.com/v1/forecast";
 const GEO = "https://geocoding-api.open-meteo.com/v1/search";
+const AIR = "https://air-quality-api.open-meteo.com/v1/air-quality";
 
 const DEFAULT_PLACE = { name: "København", region: "Hovedstaden", country: "Danmark", lat: 55.6761, lon: 12.5683 };
 
@@ -14,6 +15,29 @@ const MODELS = [
   { id: "gfs_seamless", short: "GFS", name: "GFS", origin: "NOAA, USA", slot: 4 }
 ];
 const MODEL_HOURS = 48;   // sammenligningens horisont
+
+/* Pollenarter der er relevante i Danmark. CAMS måler i korn pr. m³.
+   Grænserne er de gængse europæiske trin — omtrentlige, ikke en klinisk skala. */
+const POLLEN = [
+  { id: "alder_pollen", name: "El", steps: [1, 10, 50, 500] },
+  { id: "birch_pollen", name: "Birk", steps: [1, 10, 50, 500] },
+  { id: "grass_pollen", name: "Græs", steps: [1, 5, 20, 200] },
+  { id: "mugwort_pollen", name: "Bynke", steps: [1, 5, 20, 100] },
+  { id: "ragweed_pollen", name: "Ambrosia", steps: [1, 5, 20, 100] }
+];
+const POLLEN_BANDS = ["Intet", "Lavt", "Moderat", "Højt", "Meget højt"];
+
+/* Det europæiske luftkvalitetsindeks (EEA-skalaen). */
+const AQI_BANDS = [
+  { max: 20, name: "God", tone: 1, advice: "Fri bane for alt udendørs." },
+  { max: 40, name: "Rimelig", tone: 2, advice: "Ingen begrænsninger for de fleste." },
+  { max: 60, name: "Moderat", tone: 3, advice: "Følsomme bør skrue ned for hård træning udendørs." },
+  { max: 80, name: "Ringe", tone: 4, advice: "Læg hård træning indendørs, og luft ud om morgenen." },
+  { max: 100, name: "Meget ringe", tone: 5, advice: "Undgå anstrengelse udendørs, og hold vinduerne lukket." },
+  { max: Infinity, name: "Ekstremt ringe", tone: 6, advice: "Bliv indendørs, og hold vinduerne lukket." }
+];
+const aqiBand = (v) => AQI_BANDS.find((b) => v <= b.max) || AQI_BANDS[AQI_BANDS.length - 1];
+const pollenLevel = (v, steps) => steps.filter((t) => v >= t).length;
 const RAIN_MM = 0.2;      // hvornår en model "ser regn" i en time
 
 /* Antagelser for terrassen — juster her hvis din terrasse er anderledes. */
@@ -23,7 +47,7 @@ const TERRACE = {
   potArea: 0.049       // m² for en 25 cm potte (til liter-/ml-beregning)
 };
 
-const state = { place: null, data: null, day: 0, demo: false, viewHours: [], hourSel: -1, models: null };
+const state = { place: null, data: null, day: 0, demo: false, viewHours: [], hourSel: -1, models: null, air: null };
 
 /* localStorage kan kaste i privat tilstand — huskefunktionen må aldrig vælte siden. */
 const store = {
@@ -44,6 +68,7 @@ const WEEKDAYS = ["Søndag", "Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag",
 const MONTHS = ["jan.", "feb.", "mar.", "apr.", "maj", "jun.", "jul.", "aug.", "sep.", "okt.", "nov.", "dec."];
 const dayName = (k) => WEEKDAYS[dateFromKey(k).getDay()];
 const dayDate = (k) => { const d = dateFromKey(k); return `${d.getDate()}. ${MONTHS[d.getMonth()]}`; };
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 const COMPASS = ["N", "NNØ", "NØ", "ØNØ", "Ø", "ØSØ", "SØ", "SSØ", "S", "SSV", "SV", "VSV", "V", "VNV", "NV", "NNV"];
@@ -141,6 +166,53 @@ function weatherUrl(p) {
     daily: "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,sunrise,sunset,sunshine_duration,et0_fao_evapotranspiration"
   });
   return `${API}?${q}`;
+}
+
+/* Luftkvalitet og pollen ligger på et andet værtsnavn end vejrprognosen. */
+function airUrl(p) {
+  const q = new URLSearchParams({
+    latitude: p.lat, longitude: p.lon, timezone: "auto", forecast_days: 3,
+    hourly: ["pm10", "pm2_5", "ozone", "nitrogen_dioxide", "european_aqi"].concat(POLLEN.map((x) => x.id)).join(",")
+  });
+  return `${AIR}?${q}`;
+}
+
+async function loadAir(place) {
+  const res = await fetch(airUrl(place));
+  const js = await res.json().catch(() => null);
+  if (!res.ok || !js || js.error) throw new Error((js && js.reason) || `Luft-API'et svarede ${res.status}`);
+  if (!js.hourly || !js.hourly.time) throw new Error("Ufuldstændigt svar");
+  return js;
+}
+
+function shapeAir(raw, fromISO) {
+  const H = raw.hourly;
+  const col = (k) => (Array.isArray(H[k]) ? H[k] : []);
+  let i = H.time.indexOf(fromISO);
+  if (i < 0) i = H.time.findIndex((t) => t >= fromISO);
+  if (i < 0) i = 0;
+  const todayKey = dayKey(H.time[i]);
+  const todayIdx = H.time.map((t, k) => k).filter((k) => dayKey(H.time[k]) === todayKey);
+
+  /* Nogle felter dækker kun Europa — de kommer tilbage som null uden for. */
+  const val = (k, at) => { const v = col(k)[at]; return typeof v === "number" && isFinite(v) ? v : null; };
+  const peak = (k) => todayIdx.reduce((best, at) => {
+    const v = val(k, at);
+    return v !== null && (best === null || v > best.v) ? { v, t: H.time[at] } : best;
+  }, null);
+
+  const pollen = POLLEN.map((sp) => ({
+    ...sp, now: val(sp.id, i), peak: peak(sp.id)
+  })).filter((sp) => sp.now !== null || sp.peak !== null);
+
+  return {
+    t: H.time[i],
+    aqi: val("european_aqi", i),
+    aqiPeak: peak("european_aqi"),
+    pm25: val("pm2_5", i), pm10: val("pm10", i),
+    o3: val("ozone", i), no2: val("nitrogen_dioxide", i),
+    pollen
+  };
 }
 
 /* Modelsammenligningen hentes for sig: fejler den, mangler kun dette ét afsnit. */
@@ -444,8 +516,22 @@ function renderPlan(d) {
   oNotes.push(["", `Føles som ${Math.round(a.minFeels)}–${Math.round(a.maxFeels)}° i perioden`]);
   if (a.maxProb >= 40) oNotes.push(["warn", `Op til ${Math.round(a.maxProb)}% regnsandsynlighed, ${a.rainHours} timer med nedbør`]);
   else oNotes.push(["pos", "Lav regnrisiko — regnjakke er valgfri"]);
-  if (a.maxWind >= 8) oNotes.push(["warn", `${windWord(a.maxWind)}, op til ${fmt(a.maxWind)} m/s`]);
+  if (a.maxWind >= 8) oNotes.push(["warn", `${cap(windWord(a.maxWind))}, op til ${fmt(a.maxWind)} m/s`]);
   if (a.maxUv >= 6) oNotes.push(["warn", `UV-indeks op til ${fmt(a.maxUv)} — solcreme og skygge midt på dagen`]);
+  /* Luft og pollen nævnes kun når de er forhøjede — og får da forrang,
+     fordi de ændrer hvad man gør, ikke bare hvordan det føles. */
+  const air = state.air;
+  const airNotes = [];
+  if (air) {
+    if (air.aqi !== null && air.aqi > 40) {
+      const ab = aqiBand(air.aqi);
+      airNotes.push([air.aqi > 60 ? "neg" : "warn",
+        `Luftkvaliteten er ${ab.name.toLowerCase()} (indeks ${Math.round(air.aqi)}) — ${ab.advice.toLowerCase().replace(/\.$/, "")}`]);
+    }
+    const hi = air.pollen.filter((sp) => pollenLevel(sp.now || 0, sp.steps) >= 3);
+    if (hi.length) airNotes.push(["warn", `${cap(hi.map((sp) => sp.name.toLowerCase()).join(" og "))}pollen er højt — allergikere bør tage medicin inden`]);
+  }
+  oNotes.splice(1, 0, ...airNotes);
   if (has(a.codes, THUNDER)) oNotes.push(["neg", "Torden i perioden — hold dig væk fra åbent land og vand"]);
   if (a.maxFeels > 28) oNotes.push(["neg", "Varmt — drik rigeligt og læg hård træning tidligt eller sent"]);
   if (a.minFeels < 0) oNotes.push(["neg", "Frost — husk lag på lag og handsker"]);
@@ -476,7 +562,7 @@ function renderPlan(d) {
 
   $("#plan-grid").innerHTML =
     planCard({ icon: ICONS.car, title: "Kørsel", sub: "Næste 12 timer", score: dAvg, verdict: verdictDrive(dAvg), notes: dNotes.slice(0, 4), pill: dPill }) +
-    planCard({ icon: ICONS.hike, title: "Udendørs", sub: "Næste 12 timer", score: oAvg, verdict: verdictOut(oAvg), notes: oNotes.slice(0, 4), pill: oPill }) +
+    planCard({ icon: ICONS.hike, title: "Udendørs", sub: "Næste 12 timer", score: oAvg, verdict: verdictOut(oAvg), notes: oNotes.slice(0, 5), pill: oPill }) +
     planCard({ icon: ICONS.plant, title: "Terrasseplanter", sub: "I dag, sydvendt", score: pScore, verdict: pVerdict, notes: pNotes.slice(0, 4), pill: pPill });
 }
 
@@ -679,6 +765,64 @@ function renderPlants(d) {
   if (!notes.length) notes.push(["good", ICONS.check, "Ingen varslinger for terrassen i denne uge — hold den normale rytme med vanding og gødning."]);
   notes.push(["good", ICONS.check, `Vand tidligt om morgenen eller efter solnedgang (kl. ${hhmm(today.sunset)}) — så fordamper mindst muligt, og bladene når at tørre inden natten.`]);
   $("#plant-notes").innerHTML = notes.map(([cls, ic, txt]) => `<li class="${cls}">${ic}<span>${txt}</span></li>`).join("");
+}
+
+/* --- Luft og pollen --- */
+function renderAir() {
+  const a = state.air;
+  const status = $("#air-status"), body = $("#air-body");
+  if (!a) { status.hidden = false; body.hidden = true; return; }
+  status.hidden = true; body.hidden = false;
+
+  const tiles = [];
+  if (a.aqi !== null) {
+    const b = aqiBand(a.aqi);
+    tiles.push(`<div class="stat aq-hero aq-t${b.tone}">
+      <div class="k">Luftkvalitet nu</div>
+      <div class="v">${Math.round(a.aqi)} <span class="aq-band">${b.name}</span></div>
+      <div class="s">Europæisk indeks${a.aqiPeak ? ` · dagens værste ${Math.round(a.aqiPeak.v)} kl. ${hhmm(a.aqiPeak.t)}` : ""}</div>
+    </div>`);
+  }
+  const comp = [
+    ["PM2,5", a.pm25, "µg/m³", "fine partikler"],
+    ["PM10", a.pm10, "µg/m³", "grove partikler"],
+    ["Ozon", a.o3, "µg/m³", "O₃"],
+    ["Kvælstofdioxid", a.no2, "µg/m³", "NO₂, mest fra trafik"]
+  ].filter(([, v]) => v !== null);
+  comp.forEach(([k, v, unit, sub]) => tiles.push(
+    `<div class="stat"><div class="k">${k}</div><div class="v">${fmt(v)} <small>${unit}</small></div><div class="s">${sub}</div></div>`));
+  $("#air-top").innerHTML = tiles.join("");
+
+  /* Pollen: kun arter med tal. Uden for Europa mangler de helt. */
+  const block = $("#pollen-block");
+  if (!a.pollen.length) { block.hidden = true; return; }
+  block.hidden = false;
+
+  const active = a.pollen.filter((sp) => (sp.peak ? sp.peak.v : 0) >= sp.steps[0]);
+  const dormant = a.pollen.filter((sp) => !active.includes(sp));
+  const rows = (active.length ? active : a.pollen).map((sp) => {
+    const now = sp.now === null ? 0 : sp.now;
+    const lvl = pollenLevel(now, sp.steps);
+    const peakLvl = sp.peak ? pollenLevel(sp.peak.v, sp.steps) : 0;
+    return `<div class="pollen-row">
+      <span class="pl-name">${sp.name}</span>
+      <span class="pl-meter" role="img" aria-label="${POLLEN_BANDS[lvl]}">${
+        [1, 2, 3, 4].map((k) => `<i class="${k <= lvl ? `on lv${lvl}` : ""}"></i>`).join("")}</span>
+      <span class="pl-band lv${lvl}">${POLLEN_BANDS[lvl]}</span>
+      <span class="pl-val">${fmt(now)} korn/m³${sp.peak && peakLvl > lvl ? ` · topper kl. ${hhmm(sp.peak.t)}` : ""}</span>
+    </div>`;
+  }).join("");
+  $("#pollen-list").innerHTML = rows;
+
+  const worst = (active.length ? active : []).reduce((w, sp) =>
+    (!w || pollenLevel(sp.now || 0, sp.steps) > pollenLevel(w.now || 0, w.steps) ? sp : w), null);
+  const worstLvl = worst ? pollenLevel(worst.now || 0, worst.steps) : 0;
+  const notes = [];
+  if (worstLvl >= 3) notes.push(`${worst.name}pollen er ${POLLEN_BANDS[worstLvl].toLowerCase()} — tag din allergimedicin i god tid, og luft ud sent om aftenen frem for midt på dagen.`);
+  else if (worstLvl === 2) notes.push(`${worst.name}pollen er moderat — mærkbart for de mest følsomme.`);
+  else if (active.length) notes.push("Pollental er lave i dag.");
+  if (dormant.length) notes.push(`Uden for sæson lige nu: ${dormant.map((sp) => sp.name.toLowerCase()).join(", ")}.`);
+  $("#pollen-note").textContent = notes.join(" ");
 }
 
 /* --- Modelsammenligning --- */
@@ -913,6 +1057,7 @@ function renderAll() {
   renderPlan(d);
   renderWeek(d);
   renderPlants(d);
+  renderAir();
   renderModels();
   renderDrive(d);
   selectDay(0);
@@ -950,10 +1095,30 @@ async function load(place) {
   state.data = data;
   state.demo = demo;
   state.models = null;
+  state.air = null;
   banner(demo ? `Kunne ikke hente live data (${err.message}) — viser demo-data, så du kan se dashboardet.` : null, demo);
   renderAll();
   $("#refresh-btn").classList.remove("spin");
   loadModelsInto(place, seq, data.hours[data.nowIndex].t, demo);
+  loadAirInto(place, seq, data.hours[data.nowIndex].t, demo);
+}
+
+/* Luftdata hentes for sig — fejler det, står kun dette afsnit tomt. */
+async function loadAirInto(place, seq, fromISO, demo) {
+  try {
+    const raw = demo ? demoAir(fromISO) : await loadAir(place);
+    if (seq !== loadSeq) return;
+    state.air = shapeAir(raw, fromISO);
+    renderAir();
+    if (state.data) renderPlan(state.data);   // luften kan ændre udendørs-rådet
+  } catch (e) {
+    if (seq !== loadSeq) return;
+    state.air = null;
+    $("#air-body").hidden = true;
+    const el = $("#air-status");
+    el.hidden = false;
+    el.textContent = `Kunne ikke hente luft- og pollendata (${e.message}). Resten af siden er upåvirket.`;
+  }
 }
 
 /* Modelafsnittet hentes efter hovedvisningen — siden må ikke vente på det. */
@@ -1107,6 +1272,32 @@ function demoData(place) {
     },
     hourly, daily, _place: place
   };
+}
+
+/* Syntetiske luft- og pollental til demo-visningen (sensommer i Danmark). */
+function demoAir(fromISO) {
+  const start = new Date(fromISO.replace(" ", "T"));
+  start.setHours(start.getHours() - start.getHours());   // fra midnat
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:00`;
+  const H = { time: [], pm10: [], pm2_5: [], ozone: [], nitrogen_dioxide: [], european_aqi: [] };
+  POLLEN.forEach((sp) => { H[sp.id] = []; });
+  for (let k = 0; k < 72; k++) {
+    const t = new Date(start.getTime() + k * 3600e3);
+    const h = t.getHours();
+    const midday = Math.max(0, Math.sin(((h - 5) / 14) * Math.PI));
+    H.time.push(iso(t));
+    H.pm2_5.push(r1(6 + midday * 5 + (k % 5)));
+    H.pm10.push(r1(11 + midday * 8 + (k % 7)));
+    H.ozone.push(r1(52 + midday * 34));
+    H.nitrogen_dioxide.push(r1(9 + (1 - midday) * 12));
+    H.european_aqi.push(Math.round(22 + midday * 26 + (k % 4) * 2));
+    H.alder_pollen.push(0);
+    H.birch_pollen.push(0);
+    H.grass_pollen.push(r1(midday * 6));
+    H.mugwort_pollen.push(r1(midday * 34));
+    H.ragweed_pollen.push(r1(midday * 7));
+  }
+  return { hourly: H };
 }
 
 /* Fire syntetiske modelvarianter, så afsnittet kan ses uden netværk. */

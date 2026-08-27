@@ -28,6 +28,7 @@ Alt hentes i browseren fra [Open-Meteo](https://open-meteo.com/) — gratis, ing
 
 * `api.open-meteo.com` — time- og dagsprognose 7 dage frem (temperatur, føles-som, nedbør og sandsynlighed, vind og vindstød, sigtbarhed, UV, skydække, indstråling, ET₀-fordampning, sol op/ned).
 * `geocoding-api.open-meteo.com` — bysøgning og opslag af koordinater fra browserens stedbestemmelse.
+* `air-quality-api.open-meteo.com` — luftkvalitet og pollental fra Copernicus' CAMS-model: europæisk luftkvalitetsindeks, PM2,5, PM10, ozon, kvælstofdioxid samt pollen fra el, birk, græs, bynke og ambrosia. Pollen og de europæiske indeks dækker kun Europa; uden for Europa udelades de felter, der mangler.
 
 Valgt sted og tema gemmes i `localStorage`. Data genindlæses hvert 15. minut, når fanen er synlig.
 Kan API'et ikke nås, viser dashboardet **demo-data** med en tydelig banner, så layoutet stadig kan ses.
@@ -57,6 +58,8 @@ står potterne under et halvtag, sænk `shelterFactor`; er terrassen delvist sky
 sænk `southFactor`. "Sol på terrassen" tælles som timer mellem kl. 08 og 19 med indstråling over
 120 W/m². Varslinger udløses ved frost (min. ≤ 2 °C), varme (maks. ≥ 28 °C eller UV ≥ 7),
 vindstød ≥ 14 m/s og kraftig nedbør ≥ 15 mm.
+
+**Luft og pollen** — luftkvalitetsindekset følger EEA-skalaen (god ≤ 20, rimelig ≤ 40, moderat ≤ 60, ringe ≤ 80, meget ringe ≤ 100, derover ekstremt ringe). Pollen måles i korn pr. m³ og inddeles i fire trin pr. art, fordi arterne har vidt forskellige niveauer: træpollen (el, birk) ved 1/10/50/500, græs ved 1/5/20/200 og urter (bynke, ambrosia) ved 1/5/20/100. Trinene er de gængse europæiske grænser og er omtrentlige — de er ikke en klinisk skala, og din egen tærskel kender du bedst. Arter uden for sæson nævnes samlet i stedet for at fylde med nuller. Er luften eller pollental forhøjet, nævnes det også direkte på udendørs-kortet.
 
 Tallene er vejledende — en prognose er en prognose, og din terrasse kender du bedre end modellen.
 
