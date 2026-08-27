@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="da" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vejr &amp; Planlægning</title>
+<meta name="description" content="Vejrdashboard til kørsel, udendørsaktiviteter og planter på sydvendt terrasse.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0d1420">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%9B%85%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Spring til indhold</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">
+        <strong>Vejr &amp; Planlægning</strong>
+        <small id="place-line">Henter placering…</small>
+      </span>
+    </div>
+
+    <form class="search" id="search-form" role="search" autocomplete="off">
+      <label class="sr-only" for="search-input">Søg efter by</label>
+      <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="search-input" type="search" placeholder="Søg by…" spellcheck="false">
+      <div class="search-results" id="search-results" role="listbox" hidden></div>
+    </form>
+
+    <div class="topbar-actions">
+      <button class="icon-btn" id="locate-btn" type="button" title="Brug min placering" aria-label="Brug min placering">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="8"/><path d="M12 1.6v2.6M12 19.8v2.6M22.4 12h-2.6M4.2 12H1.6"/></svg>
+      </button>
+      <button class="icon-btn" id="theme-btn" type="button" title="Skift tema" aria-label="Skift tema">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+      </button>
+      <button class="icon-btn" id="refresh-btn" type="button" title="Opdater" aria-label="Opdater">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.5h-4.5"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="banner" id="banner" hidden></div>
+</header>
+
+<main id="main">
+
+  <!-- NU -->
+  <section class="card hero" id="hero" aria-labelledby="hero-h">
+    <h2 class="sr-only" id="hero-h">Vejret lige nu</h2>
+    <div class="hero-main">
+      <div class="hero-icon" id="hero-icon"></div>
+      <div class="hero-temp">
+        <div class="temp-big"><span id="now-temp">–</span><span class="deg">°</span></div>
+        <div class="hero-desc"><span id="now-desc">…</span></div>
+        <div class="hero-feels">Føles som <b id="now-feels">–°</b> · <span id="now-updated">…</span></div>
+      </div>
+    </div>
+    <dl class="hero-stats" id="hero-stats"></dl>
+  </section>
+
+  <!-- PLANLÆGNING -->
+  <section class="section" aria-labelledby="plan-h">
+    <div class="section-head">
+      <h2 id="plan-h">Kan jeg det i dag?</h2>
+      <p class="section-sub">Scorer 0–10 for de næste 12 timer, beregnet ud fra time-for-time-prognosen.</p>
+    </div>
+    <div class="plan-grid" id="plan-grid"></div>
+  </section>
+
+  <!-- I DAG -->
+  <section class="section" aria-labelledby="today-h">
+    <div class="section-head">
+      <h2 id="today-h">Timer frem</h2>
+      <p class="section-sub" id="today-sub">Temperatur, nedbør og vind de næste 24 timer.</p>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-legend">
+        <span class="lg lg-temp">Temperatur</span>
+        <span class="lg lg-feels">Føles som</span>
+        <span class="lg lg-precip">Nedbør</span>
+        <span class="lg lg-night">Nat</span>
+      </div>
+      <div class="chart-scroll" id="chart-scroll"><div id="chart"></div></div>
+      <div class="chart-scroll hours-scroll" id="hours-scroll"><div class="hours" id="hours"></div></div>
+    </div>
+  </section>
+
+  <!-- UGEN -->
+  <section class="section" aria-labelledby="week-h">
+    <div class="section-head">
+      <h2 id="week-h">Ugens vejr</h2>
+      <p class="section-sub">Klik på en dag for at se timerne for netop den dag.</p>
+    </div>
+    <div class="card week-card"><div class="week" id="week"></div></div>
+  </section>
+
+  <!-- TERRASSE -->
+  <section class="section" aria-labelledby="plant-h">
+    <div class="section-head">
+      <h2 id="plant-h">Sydvendt terrasse</h2>
+      <p class="section-sub" id="plant-sub">Vanding, sol og varslinger for potteplanter i fuld sydsol.</p>
+    </div>
+    <div class="card plant-card">
+      <div class="plant-top" id="plant-top"></div>
+      <div class="plant-days" id="plant-days"></div>
+      <ul class="plant-notes" id="plant-notes"></ul>
+    </div>
+  </section>
+
+  <!-- KØRSEL -->
+  <section class="section" aria-labelledby="drive-h">
+    <div class="section-head">
+      <h2 id="drive-h">Kørselsvinduer</h2>
+      <p class="section-sub">De næste 24 timer vurderet på nedbør, glatføre, vindstød, sigtbarhed og lavtstående sol.</p>
+    </div>
+    <div class="card"><div class="windows" id="drive-windows"></div></div>
+  </section>
+
+  <footer class="foot">
+    <p>Data fra <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> · Ingen API-nøgle, ingen sporing. Alle råd er vejledende.</p>
+    <p id="foot-meta"></p>
+  </footer>
+</main>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
