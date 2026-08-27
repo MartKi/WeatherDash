@@ -481,39 +481,75 @@ function renderPlan(d) {
 }
 
 /* SVG-graf: temperatur, føles-som og nedbør. */
+/* Glat kurve gennem punkterne — Catmull-Rom omsat til kubiske bezier-segmenter. */
+function smoothPath(pts) {
+  if (pts.length < 3) return pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    d += `C${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(1)},${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(1)} ` +
+      `${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(1)},${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(1)} ` +
+      `${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
 function renderChart(hours, day) {
-  const W = 62, H = 168, padT = 26, padB = 34;
+  const W = 62, H = 158, padT = 26, padB = 40;
   const w = Math.max(hours.length * W, 320);
-  const temps = hours.flatMap((h) => [h.temp, h.feels]);
+  const base = H - padB;
+  const temps = hours.map((h) => h.temp);
   let lo = Math.min(...temps), hi = Math.max(...temps);
   if (hi - lo < 6) { const mid = (hi + lo) / 2; lo = mid - 3; hi = mid + 3; }
   lo -= 1; hi += 1;
   const x = (i) => i * W + W / 2;
-  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
-  const maxP = Math.max(1.2, ...hours.map((h) => h.precip));
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (base - padT);
+  const maxP = Math.max(1.5, ...hours.map((h) => h.precip));
 
-  const line = (key, cls) => `<path class="${cls}" d="${hours.map((h, i) => `${i ? "L" : "M"}${x(i)},${y(h[key])}`).join("")}"/>`;
-  const fill = `<path class="tempfill" d="${hours.map((h, i) => `${i ? "L" : "M"}${x(i)},${y(h.temp)}`).join("")}L${x(hours.length - 1)},${H - padB}L${x(0)},${H - padB}Z"/>`;
-
+  /* Nat som ét sammenhængende felt pr. mørkeperiode, ikke en kolonne pr. time */
   const nights = [];
+  let ns = -1;
   hours.forEach((h, i) => {
-    if (!h.isDay) nights.push(`<rect class="night" x="${i * W}" y="0" width="${W}" height="${H - padB + 8}"/>`);
+    if (!h.isDay && ns < 0) ns = i;
+    if ((h.isDay || i === hours.length - 1) && ns >= 0) {
+      const end = h.isDay ? i : i + 1;
+      nights.push(`<rect class="night" x="${ns * W}" y="0" width="${(end - ns) * W}" height="${base + 12}" rx="8"/>`);
+      ns = -1;
+    }
   });
+
+  const pts = hours.map((h, i) => [x(i), y(h.temp)]);
+  const curve = smoothPath(pts);
+  const fill = `<path fill="url(#tempgrad)" stroke="none" d="${curve}L${x(hours.length - 1).toFixed(1)},${base}L${x(0).toFixed(1)},${base}Z"/>`;
+
+  /* Nedbør: afrundede søjler fra bunden, mm-tal over de væsentlige */
   const bars = hours.map((h, i) => {
-    const bh = (h.precip / maxP) * 30;
-    const probh = (h.prob / 100) * 30;
-    return `<rect class="pprob" x="${x(i) - 11}" y="${H - padB + 8 - probh}" width="22" height="${probh}" rx="2"/>` +
-      (h.precip > 0.02 ? `<rect class="pbar" x="${x(i) - 6}" y="${H - padB + 8 - bh}" width="12" height="${Math.max(bh, 2)}" rx="2"/>` : "");
+    if (h.precip < 0.05) return "";
+    const bh = Math.max(3, (h.precip / maxP) * 34);
+    return `<rect class="pbar" x="${x(i) - 7}" y="${(base + 12 - bh).toFixed(1)}" width="14" height="${bh.toFixed(1)}" rx="3"/>` +
+      (h.precip >= 0.5 ? `<text class="pval" x="${x(i)}" y="${(base + 12 - bh - 5).toFixed(1)}" text-anchor="middle">${fmt(h.precip)}</text>` : "");
   }).join("");
-  const labels = hours.map((h, i) => (i % 2 === 0 || hours.length <= 12)
-    ? `<text class="val" x="${x(i)}" y="${y(h.temp) - 9}" text-anchor="middle">${Math.round(h.temp)}°</text>` : "").join("");
-  const grid = [0, 0.5, 1].map((f) => {
+
+  /* Kun yderpunkterne får tal — timelisten nedenunder har alle værdierne */
+  const iMax = temps.indexOf(Math.max(...temps));
+  const iMin = temps.indexOf(Math.min(...temps));
+  const labels = [...new Set([iMax, iMin])].map((i) =>
+    `<text class="val" x="${x(i)}" y="${(y(temps[i]) - 10).toFixed(1)}" text-anchor="middle">${Math.round(temps[i])}°</text>`).join("");
+  const dots = [...new Set([iMax, iMin])].map((i) =>
+    `<circle class="vdot" cx="${x(i)}" cy="${y(temps[i]).toFixed(1)}" r="3.2"/>`).join("");
+
+  const grid = [0.25, 0.75].map((f) => {
     const v = lo + (hi - lo) * f;
-    return `<line class="grid" x1="0" x2="${w}" y1="${y(v)}" y2="${y(v)}"/>`;
+    return `<line class="grid" x1="0" x2="${w}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>`;
   }).join("");
 
   $("#chart").innerHTML = `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" role="img"
-      aria-label="Temperatur og nedbør time for time">${nights.join("")}${grid}${fill}${line("feels", "feelsline")}${line("temp", "templine")}${bars}${labels}</svg>`;
+      aria-label="Temperatur og nedbør time for time">
+      <defs><linearGradient id="tempgrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="var(--warm)" stop-opacity=".26"/>
+        <stop offset="1" stop-color="var(--warm)" stop-opacity="0"/>
+      </linearGradient></defs>
+      ${nights.join("")}${grid}${fill}<path class="templine" d="${curve}"/>${bars}${dots}${labels}</svg>`;
   $("#today-sub").textContent = day
     ? `${dayName(day.key)} ${dayDate(day.key)} — ${hours.length} timer. Skyggede felter er nat.`
     : "Temperatur, nedbør og vind de næste 24 timer. Tryk på en time for alle detaljer.";
@@ -689,39 +725,48 @@ function renderModels() {
   status.hidden = true; body.hidden = false;
 
   $("#models-verdict").innerHTML = modelsVerdict(m);
-  const narrowLegend = ($("#mchart-wrap").clientWidth || 900) < 560;
-  $("#models-legend").innerHTML = m.series.map((s) => {
-    const last = Math.round(num(s.temp[s.temp.length - 1]));
-    return `<span class="mlg"><i style="background:var(--s${s.slot})"></i>${esc(s.name)} ` +
-      (narrowLegend ? `<small>om 48 t: ${last}°</small>` : `<small>${esc(s.origin)}</small>`) + `</span>`;
-  }).join("");
+  $("#models-legend").innerHTML = m.series.map((s) =>
+    `<span class="mlg"><i style="background:var(--s${s.slot})"></i>${esc(s.name)} <small>${esc(s.origin)}</small></span>`).join("");
 
-  /* Graf: spændfelt + én tynd linje pr. model + navn ved linjens ende.
-     Tegnes i containerens faktiske pixelbredde, så teksten ikke skaleres ned. */
+  /* Én samlet figur: temperatur øverst, regn-enighed som række nedenunder,
+     fælles tidsakse og fælles sigtelinje. Tegnes i containerens pixelbredde. */
   const wrapW = $("#mchart-wrap").clientWidth || 900;
   const narrow = wrapW < 560;
-  const W = Math.max(320, wrapW), H = narrow ? 168 : 190;
-  const padT = 14, padB = 26, padR = narrow ? 14 : 104, padL = 34;
+  const W = Math.max(320, wrapW);
+  const padT = 12, padL = 34, padR = narrow ? 14 : 100;
+  const plotH = narrow ? 130 : 150;          // temperaturfeltet
+  const rainY = padT + plotH + 14;           // regnrækkens overkant
+  const rainH = 14;
+  const H = rainY + rainH + 30;              // plads til dagslabels nederst
   const n = m.hours.length;
+
   const vals = m.series.flatMap((s) => s.temp).filter((v) => typeof v === "number" && isFinite(v));
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (hi - lo < 4) { const mid = (hi + lo) / 2; lo = mid - 2; hi = mid + 2; }
-  const padY = (hi - lo) * 0.12;
+  const padY = (hi - lo) * 0.14;
   lo -= padY; hi += padY;
   const x = (i) => padL + (i / (n - 1)) * (W - padL - padR);
-  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * plotH;
 
-  const band = `<path class="mband" d="${
-    m.hours.map((h, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(h.max).toFixed(1)}`).join("")
-  }${
-    m.hours.slice().reverse().map((h, j) => `L${x(n - 1 - j).toFixed(1)},${y(h.min).toFixed(1)}`).join("")
-  }Z"/>`;
+  /* Spændfeltet: glat overkant (varmeste) og glat underkant (koldeste) */
+  const topPts = m.hours.map((h, i) => [x(i), y(h.max)]);
+  const botPts = m.hours.map((h, i) => [x(i), y(h.min)]).reverse();
+  const band = `<path class="mband" d="${smoothPath(topPts)}L${botPts[0][0].toFixed(1)},${botPts[0][1].toFixed(1)}${smoothPath(botPts).slice(smoothPath(botPts).indexOf("C"))}Z"/>`;
 
   const lines = m.series.map((s) => `<path class="mline" style="stroke:var(--s${s.slot})" d="${
-    s.temp.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(num(v)).toFixed(1)}`).join("")
-  }"/>`).join("");
+    smoothPath(s.temp.map((v, i) => [x(i), y(num(v))]))}"/>`).join("");
 
-  /* Direkte labels ved kurvens ende, skubbet fra hinanden så de ikke overlapper */
+  /* Markér timen med størst uenighed: lodret spænd med gradtal */
+  const iw = m.hours.reduce((a, h, i) => (h.spread > m.hours[a].spread ? i : a), 0);
+  const wh = m.hours[iw];
+  const spreadMark = wh.spread >= 1.5 ? `
+    <line class="mspread" x1="${x(iw).toFixed(1)}" x2="${x(iw).toFixed(1)}" y1="${y(wh.max).toFixed(1)}" y2="${y(wh.min).toFixed(1)}"/>
+    <circle class="mspread-dot" cx="${x(iw).toFixed(1)}" cy="${y(wh.max).toFixed(1)}" r="2.6"/>
+    <circle class="mspread-dot" cx="${x(iw).toFixed(1)}" cy="${y(wh.min).toFixed(1)}" r="2.6"/>
+    <text class="mspread-txt" x="${(x(iw) + (iw > n * 0.75 ? -8 : 8)).toFixed(1)}" y="${((y(wh.max) + y(wh.min)) / 2 + 4).toFixed(1)}"
+      ${iw > n * 0.75 ? 'text-anchor="end"' : ""}>${fmt(wh.spread)}°</text>` : "";
+
+  /* Navn og slutværdi ved kurvernes ende (kun hvor der er plads) */
   const ends = m.series.map((s) => ({ s, y: y(num(s.temp[n - 1])) })).sort((a, b) => a.y - b.y);
   for (let i = 1; i < ends.length; i++) {
     if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
@@ -729,39 +774,48 @@ function renderModels() {
   const labels = narrow ? "" : ends.map(({ s, y: ly }) =>
     `<text class="mlabel" style="fill:var(--s${s.slot})" x="${(W - padR + 8).toFixed(1)}" y="${(ly + 4).toFixed(1)}">${esc(s.short)} ${Math.round(num(s.temp[n - 1]))}°</text>`).join("");
 
-  const ticks = [lo + (hi - lo) * 0.1, (lo + hi) / 2, hi - (hi - lo) * 0.1].map((v) =>
+  const ticks = [lo + (hi - lo) * 0.15, (lo + hi) / 2, hi - (hi - lo) * 0.15].map((v) =>
     `<line class="mgrid" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>` +
     `<text class="maxis" x="${padL - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${Math.round(v)}°</text>`).join("");
 
-  const dayMarks = m.hours.map((h, i) => (h.hh === "00.00" && i > 0
-    ? `<line class="mday" x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${padT}" y2="${H - padB}"/>` +
-      `<text class="maxis" x="${(x(i) + 5).toFixed(1)}" y="${H - padB + 16}">${esc(dayName(h.key).slice(0, 3).toLowerCase())}</text>`
-    : "")).join("");
-  const xLabels = m.hours.map((h, i) => (i === 0
-    ? `<text class="maxis" x="${x(i).toFixed(1)}" y="${H - padB + 16}">nu</text>` : "")).join("");
+  /* Regn-enighed inde i samme figur, med egen rækkelabel */
+  const cellW = (W - padL - padR) / n;
+  const rain = m.hours.map((h, i) => {
+    const f = h.rain / h.rainAll;
+    const fill = f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`;
+    return `<rect x="${(padL + i * cellW).toFixed(1)}" y="${rainY}" width="${Math.max(cellW - 1.5, 1).toFixed(1)}" height="${rainH}" rx="2.5" style="fill:${fill}" stroke="none"/>`;
+  }).join("");
+  const rainLabel = `<text class="maxis" x="${padL - 8}" y="${rainY + rainH - 3}" text-anchor="end">Regn</text>`;
+
+  /* Dage: adskillere gennem begge felter og navnet centreret i sit døgn */
+  const bounds = [0];
+  m.hours.forEach((h, i) => { if (h.hh === "00.00" && i > 0) bounds.push(i); });
+  bounds.push(n - 1);
+  const seps = bounds.slice(1, -1).map((i) =>
+    `<line class="mday" x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${padT}" y2="${rainY + rainH}"/>`).join("");
+  const todayKey = state.data ? state.data.days[0].key : m.hours[0].key;
+  const dayLabs = bounds.slice(0, -1).map((b, k) => {
+    const mid = (x(b) + x(bounds[k + 1])) / 2;
+    const key = m.hours[Math.min(b + 1, n - 1)].key;
+    const name = key === todayKey ? "i dag" : dayName(key).toLowerCase();
+    return `<text class="mdaylab" x="${mid.toFixed(1)}" y="${rainY + rainH + 20}" text-anchor="middle">${esc(name)}</text>`;
+  }).join("");
 
   $("#mchart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
-      aria-label="Temperatur de næste ${n} timer ifølge ${m.series.length} vejrmodeller">
-      ${ticks}${dayMarks}${band}${lines}${labels}${xLabels}
-      <line class="mcross" id="mcross" x1="0" x2="0" y1="${padT}" y2="${H - padB}" style="display:none"/>
+      aria-label="Temperatur og regn-enighed de næste ${n} timer ifølge ${m.series.length} vejrmodeller">
+      ${ticks}${seps}${band}${lines}${spreadMark}${labels}${rain}${rainLabel}${dayLabs}
+      <line class="mcross" id="mcross" x1="0" x2="0" y1="${padT}" y2="${rainY + rainH}" style="display:none"/>
     </svg>`;
   bindCrosshair(x, padL, W, padR);
-  $("#mchart-cap").textContent = `Temperatur de næste ${n} timer. Det tonede felt er spændet mellem den koldeste og varmeste model.` + (narrow ? " Tryk i grafen for at læse en time." : "");
+  $("#mchart-cap").textContent = "Øverst temperaturen pr. model — det tonede felt er spændet mellem koldeste og varmeste, og markeringen viser timen med størst uenighed. Rækken Regn viser, hvor mange modeller der ser nedbør i timen." + (narrow ? " Tryk i grafen for at læse en time." : "");
 
-  /* Regn-enighed: én celle pr. time, mørkere jo flere modeller der ser regn */
-  $("#rainstrip").innerHTML = `<div class="rstrip">${m.hours.map((h) => {
-    const f = h.rain / h.rainAll;
-    return `<span class="rcell" title="kl. ${h.hh}: ${h.rain} af ${h.rainAll} modeller ser regn"
-      style="background:${f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`}"></span>`;
-  }).join("")}</div>
-  <div class="rlabels"><span>nu</span><span>+24 t</span><span>+48 t</span></div>`;
   $("#rainscale").innerHTML = [0, 1, 2, 3, 4].filter((k) => k <= m.series.length).map((k) => {
     const f = k / m.series.length;
     return `<span class="rkey"><i style="background:${f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`}"></i>${k}</span>`;
   }).join("") + `<span class="rkey-txt">modeller ser regn i timen</span>`;
 
   /* Tabelvisning — samme tal, uden farvekodning */
-  const sum = (a) => a.reduce((x, v) => x + num(v), 0);
+  const sum = (a) => a.reduce((x2, v) => x2 + num(v), 0);
   $("#mtable").innerHTML = `
     <thead><tr><th>Model</th><th>Nu</th><th>Laveste</th><th>Højeste</th><th>Nedbør ${MODEL_HOURS} t</th></tr></thead>
     <tbody>${m.series.map((s) => {
