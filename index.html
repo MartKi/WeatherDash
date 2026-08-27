@@ -62,20 +62,30 @@
   </section>
 
   <!-- PLANLÆGNING -->
-  <section class="section" aria-labelledby="plan-h">
-    <div class="section-head">
-      <h2 id="plan-h">Hvad kan jeg i dag?</h2>
-      <p class="section-sub">Scorer 0–10 for de næste 12 timer, beregnet ud fra time-for-time-prognosen.</p>
-    </div>
+  <details class="section" id="sec-plan" open>
+    <summary class="section-head">
+      <span class="sh-text">
+        <h2 id="plan-h">Dagens vurdering</h2>
+        <span class="section-sub">Scorer 0–10 for de næste 12 timer, beregnet ud fra time-for-time-prognosen.</span>
+      </span>
+      <svg class="sh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    </summary>
+    <div class="section-body">
     <div class="plan-grid" id="plan-grid"></div>
-  </section>
+    </div>
+  </details>
 
   <!-- LUFT OG POLLEN -->
-  <section class="section" aria-labelledby="air-h">
-    <div class="section-head">
-      <h2 id="air-h">Luft og pollen</h2>
-      <p class="section-sub">Luftkvalitet og pollental fra Copernicus' europæiske model — relevant hvis du skal træne udenfor eller er allergiker.</p>
-    </div>
+  <details class="section" id="sec-air">
+    <summary class="section-head">
+      <span class="sh-text">
+        <h2 id="air-h">Luft og pollen</h2>
+        <span class="section-sub">Luftkvalitet og pollental fra Copernicus' europæiske model — relevant hvis du skal træne udenfor eller er allergiker.</span>
+      </span>
+      <span class="sh-chip" id="chip-air" hidden></span>
+      <svg class="sh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    </summary>
+    <div class="section-body">
     <div class="card air-card" id="air-card">
       <p class="air-status" id="air-status">Henter luftdata…</p>
       <div id="air-body" hidden>
@@ -87,14 +97,19 @@
         </div>
       </div>
     </div>
-  </section>
+    </div>
+  </details>
 
   <!-- I DAG -->
-  <section class="section" aria-labelledby="today-h">
-    <div class="section-head">
-      <h2 id="today-h">Time for time</h2>
-      <p class="section-sub" id="today-sub">Temperatur, nedbør og vind de næste 24 timer. Tryk på en time for alle detaljer.</p>
-    </div>
+  <details class="section" id="sec-today" open>
+    <summary class="section-head">
+      <span class="sh-text">
+        <h2 id="today-h">Time for time</h2>
+        <span class="section-sub" id="today-sub">Temperatur, nedbør og vind de næste 24 timer. Tryk på en time for alle detaljer.</span>
+      </span>
+      <svg class="sh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    </summary>
+    <div class="section-body">
     <div class="card chart-card">
       <div class="chart-legend">
         <span class="lg lg-temp">Temperatur</span>
@@ -109,14 +124,20 @@
       </div>
       <div class="hour-detail" id="hour-detail" hidden></div>
     </div>
-  </section>
+    </div>
+  </details>
 
   <!-- MODELLER -->
-  <section class="section" aria-labelledby="models-h">
-    <div class="section-head">
-      <h2 id="models-h">Er modellerne enige?</h2>
-      <p class="section-sub">Fire nationale vejrmodeller for det samme sted. Hvor de er uenige, er prognosen usikker — og det er værd at vide, før du planlægger.</p>
-    </div>
+  <details class="section" id="sec-models">
+    <summary class="section-head">
+      <span class="sh-text">
+        <h2 id="models-h">Prognosesikkerhed</h2>
+        <span class="section-sub">Fire nationale vejrmodeller for det samme sted. Jo mere de er uenige, jo mere usikker er prognosen.</span>
+      </span>
+      <span class="sh-chip" id="chip-models" hidden></span>
+      <svg class="sh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    </summary>
+    <div class="section-body">
     <div class="card models-card" id="models-card">
       <p class="models-status" id="models-status">Henter modeller…</p>
       <div id="models-body" hidden>
@@ -136,38 +157,55 @@
         </details>
       </div>
     </div>
-  </section>
+    </div>
+  </details>
 
   <!-- UGEN -->
-  <section class="section" aria-labelledby="week-h">
-    <div class="section-head">
-      <h2 id="week-h">Ugens vejr</h2>
-      <p class="section-sub">Klik på en dag for at se timerne for netop den dag.</p>
-    </div>
+  <details class="section" id="sec-week" open>
+    <summary class="section-head">
+      <span class="sh-text">
+        <h2 id="week-h">Ugens vejr</h2>
+        <span class="section-sub">Klik på en dag for at se timerne for netop den dag.</span>
+      </span>
+      <svg class="sh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    </summary>
+    <div class="section-body">
     <div class="card week-card"><div class="week" id="week"></div></div>
-  </section>
+    </div>
+  </details>
 
   <!-- TERRASSE -->
-  <section class="section" aria-labelledby="plant-h">
-    <div class="section-head">
-      <h2 id="plant-h">Sydvendt terrasse</h2>
-      <p class="section-sub" id="plant-sub">Vanding, sol og varslinger for potteplanter i fuld sydsol.</p>
-    </div>
+  <details class="section" id="sec-plant" open>
+    <summary class="section-head">
+      <span class="sh-text">
+        <h2 id="plant-h">Sydvendt terrasse</h2>
+        <span class="section-sub" id="plant-sub">Vanding, sol og varslinger for potteplanter i fuld sydsol.</span>
+      </span>
+      <svg class="sh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    </summary>
+    <div class="section-body">
     <div class="card plant-card">
       <div class="plant-top" id="plant-top"></div>
       <div class="plant-days" id="plant-days"></div>
       <ul class="plant-notes" id="plant-notes"></ul>
     </div>
-  </section>
+    </div>
+  </details>
 
   <!-- KØRSEL -->
-  <section class="section" aria-labelledby="drive-h">
-    <div class="section-head">
-      <h2 id="drive-h">Kørselsvinduer</h2>
-      <p class="section-sub">De næste 24 timer vurderet på nedbør, glatføre, vindstød, sigtbarhed og lavtstående sol.</p>
-    </div>
+  <details class="section" id="sec-drive">
+    <summary class="section-head">
+      <span class="sh-text">
+        <h2 id="drive-h">Kørselsvinduer</h2>
+        <span class="section-sub">De næste 24 timer vurderet på nedbør, glatføre, vindstød, sigtbarhed og lavtstående sol.</span>
+      </span>
+      <span class="sh-chip" id="chip-drive" hidden></span>
+      <svg class="sh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5l6 6 6-6"/></svg>
+    </summary>
+    <div class="section-body">
     <div class="card"><div class="windows" id="drive-windows"></div></div>
-  </section>
+    </div>
+  </details>
 
   <footer class="foot">
     <p>Data fra <a href="https://open-meteo.com/" rel="noopener">Open-Meteo</a> · Ingen API-nøgle, ingen sporing. Alle råd er vejledende.</p>
