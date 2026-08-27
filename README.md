@@ -59,7 +59,16 @@ sænk `southFactor`. "Sol på terrassen" tælles som timer mellem kl. 08 og 19 m
 120 W/m². Varslinger udløses ved frost (min. ≤ 2 °C), varme (maks. ≥ 28 °C eller UV ≥ 7),
 vindstød ≥ 14 m/s og kraftig nedbør ≥ 15 mm.
 
-**Luft og pollen** — luftkvalitetsindekset følger EEA-skalaen (god ≤ 20, rimelig ≤ 40, moderat ≤ 60, ringe ≤ 80, meget ringe ≤ 100, derover ekstremt ringe). Pollen måles i korn pr. m³ og inddeles i fire trin pr. art, fordi arterne har vidt forskellige niveauer: træpollen (el, birk) ved 1/10/50/500, græs ved 1/5/20/200 og urter (bynke, ambrosia) ved 1/5/20/100. Trinene er de gængse europæiske grænser og er omtrentlige — de er ikke en klinisk skala, og din egen tærskel kender du bedst. Arter uden for sæson nævnes samlet i stedet for at fylde med nuller. Er luften eller pollental forhøjet, nævnes det også direkte på udendørs-kortet.
+**Luft og pollen** — luftkvalitetsindekset følger EEA-skalaen (god ≤ 20, rimelig ≤ 40, moderat ≤ 60, ringe ≤ 80, meget ringe ≤ 100, derover ekstremt ringe). Hvert enkelt stof vurderes på samme skala via EEA's del-indeks, så et tal som "88 µg/m³ ozon" kan læses uden at kende grænseværdierne. Rækkefølgen er: Open-Meteos egne del-indeks hentes i et separat kald og bruges, når de er tilgængelige; kan de ikke hentes, placeres stoffet efter denne tabel i `AQ_SUB`:
+
+| Stof | God | Rimelig | Moderat | Ringe | Meget ringe |
+| --- | --- | --- | --- | --- | --- |
+| PM2,5 (24-t snit) | < 10 | < 20 | < 25 | < 50 | < 75 |
+| PM10 (24-t snit) | < 20 | < 40 | < 50 | < 100 | < 150 |
+| Ozon (time) | < 50 | < 100 | < 130 | < 240 | < 380 |
+| NO₂ (time) | < 40 | < 90 | < 120 | < 230 | < 340 |
+
+Det separate kald er bevidst adskilt fra hovedkaldet: et ukendt variabelnavn ville ellers give 400 på hele luftafsnittet i stedet for blot at falde tilbage på tabellen. Pollen måles i korn pr. m³ og inddeles i fire trin pr. art, fordi arterne har vidt forskellige niveauer: træpollen (el, birk) ved 1/10/50/500, græs ved 1/5/20/200 og urter (bynke, ambrosia) ved 1/5/20/100. Trinene er de gængse europæiske grænser og er omtrentlige — de er ikke en klinisk skala, og din egen tærskel kender du bedst. Arter uden for sæson nævnes samlet i stedet for at fylde med nuller. Er luften eller pollental forhøjet, nævnes det også direkte på udendørs-kortet.
 
 Tallene er vejledende — en prognose er en prognose, og din terrasse kender du bedre end modellen.
 
