@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Vejr &amp; Planlægning</title>
+<title>Vejr &amp; planlægning</title>
 <meta name="description" content="Vejrdashboard til kørsel, udendørsaktiviteter og planter på sydvendt terrasse.">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#0d1420">
@@ -18,7 +18,7 @@
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
       <span class="brand-text">
-        <strong>Vejr &amp; Planlægning</strong>
+        <strong>Vejr &amp; planlægning</strong>
         <small id="place-line">Henter placering…</small>
       </span>
     </div>
@@ -26,7 +26,7 @@
     <form class="search" id="search-form" role="search" autocomplete="off">
       <label class="sr-only" for="search-input">Søg efter by</label>
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input id="search-input" type="search" placeholder="Søg by…" spellcheck="false">
+      <input id="search-input" type="search" placeholder="Søg efter by…" spellcheck="false">
       <div class="search-results" id="search-results" role="listbox" hidden></div>
     </form>
 
@@ -64,7 +64,7 @@
   <!-- PLANLÆGNING -->
   <section class="section" aria-labelledby="plan-h">
     <div class="section-head">
-      <h2 id="plan-h">Kan jeg det i dag?</h2>
+      <h2 id="plan-h">Hvad kan jeg i dag?</h2>
       <p class="section-sub">Scorer 0–10 for de næste 12 timer, beregnet ud fra time-for-time-prognosen.</p>
     </div>
     <div class="plan-grid" id="plan-grid"></div>
@@ -73,18 +73,20 @@
   <!-- I DAG -->
   <section class="section" aria-labelledby="today-h">
     <div class="section-head">
-      <h2 id="today-h">Timer frem</h2>
-      <p class="section-sub" id="today-sub">Temperatur, nedbør og vind de næste 24 timer.</p>
+      <h2 id="today-h">Time for time</h2>
+      <p class="section-sub" id="today-sub">Temperatur, nedbør og vind de næste 24 timer. Tryk på en time for alle detaljer.</p>
     </div>
     <div class="card chart-card">
       <div class="chart-legend">
         <span class="lg lg-temp">Temperatur</span>
         <span class="lg lg-feels">Føles som</span>
-        <span class="lg lg-precip">Nedbør</span>
+        <span class="lg lg-precip">Nedbør (mm)</span>
+        <span class="lg lg-prob">Regnrisiko (%)</span>
         <span class="lg lg-night">Nat</span>
       </div>
       <div class="chart-scroll" id="chart-scroll"><div id="chart"></div></div>
       <div class="chart-scroll hours-scroll" id="hours-scroll"><div class="hours" id="hours"></div></div>
+      <div class="hour-detail" id="hour-detail" hidden></div>
     </div>
   </section>
 
