@@ -201,6 +201,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .lg-temp::before { background: var(--warm); }
 .lg-feels::before { background: var(--text-3); }
 .lg-precip::before { background: var(--rain); height: 9px; width: 7px; border-radius: 2px; }
+.lg-prob::before { background: color-mix(in srgb, var(--rain) 30%, transparent); height: 9px; width: 7px; border-radius: 2px; }
 .lg-night::before { background: color-mix(in srgb, var(--text-3) 30%, transparent); height: 9px; width: 12px; }
 .chart-scroll { overflow-x: auto; overflow-y: hidden; padding: 0 18px; scrollbar-width: thin; }
 .chart-scroll svg { display: block; overflow: visible; }
@@ -219,13 +220,36 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .hour {
   width: 62px; flex: none; text-align: center; padding: 8px 2px; border-radius: 10px;
   display: grid; gap: 3px; justify-items: center;
+  border: 0; background: none; cursor: pointer; font: inherit; color: inherit;
 }
+.hour.sel { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.hour .wind { display: inline-flex; align-items: center; gap: 3px; }
+.warrow { width: 12px; height: 12px; color: var(--text-3); flex: none; }
+.hour.sel .warrow, .hour:hover .warrow { color: var(--accent); }
 .hour:hover { background: var(--surface-2); }
 .hour.now { background: var(--accent-soft); }
 .hour .h { font-size: 12px; color: var(--text-2); }
 .hour svg { width: 22px; height: 22px; }
 .hour .w { font-size: 11.5px; color: var(--text-2); }
 .hour .p { font-size: 11.5px; color: var(--rain); min-height: 1.2em; }
+
+/* ---------- Hour detail ---------- */
+.hour-detail {
+  margin: 6px 18px 12px; padding: 14px 16px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--line-soft);
+}
+.hd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.hd-head svg { width: 34px; height: 34px; }
+.hd-head b { display: block; font-size: 14px; }
+.hd-head span { color: var(--text-2); font-size: 13px; }
+.hd-grid {
+  margin: 0; display: grid; gap: 10px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.hd-grid dt { color: var(--text-2); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; }
+.hd-grid dd { margin: 2px 0 0; font-size: 14.5px; font-weight: 550; }
+.hd-grid dd.sub { margin-top: 0; font-weight: 400; }
+.hd-grid dd.sub small { color: var(--text-2); font-size: 12px; }
 
 /* ---------- Week ---------- */
 .week-card { padding: 6px 8px; }
@@ -314,9 +338,6 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 /* ---------- Footer ---------- */
 .foot { margin-top: 36px; color: var(--text-2); font-size: 12.5px; text-align: center; }
 .foot p { margin: 4px 0; }
-
-.skeleton { color: transparent !important; background: var(--line-soft); border-radius: 6px; animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .5; } }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {

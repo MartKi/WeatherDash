@@ -13,14 +13,21 @@ const TERRACE = {
   potArea: 0.049       // m² for en 25 cm potte (til liter-/ml-beregning)
 };
 
-const state = { place: null, data: null, day: 0, demo: false };
+const state = { place: null, data: null, day: 0, demo: false, viewHours: [], hourSel: -1 };
+
+/* localStorage kan kaste i privat tilstand — huskefunktionen må aldrig vælte siden. */
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* ignorer */ } }
+};
 
 /* ---------- små hjælpere ---------- */
 const $ = (sel) => document.querySelector(sel);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const r1 = (v) => Math.round(v * 10) / 10;
+const fmt = (v) => String(r1(v)).replace(".", ",");
 const num = (v, fb = 0) => (typeof v === "number" && isFinite(v) ? v : fb);
-const hhmm = (iso) => (iso || "").slice(11, 16);
+const hhmm = (iso) => (iso || "").slice(11, 16).replace(":", ".");
 const dayKey = (iso) => (iso || "").slice(0, 10);
 const dateFromKey = (k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
 const WEEKDAYS = ["Søndag", "Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag"];
@@ -36,19 +43,24 @@ const dir = (deg) => COMPASS[Math.round(num(deg) / 22.5) % 16];
 function windWord(ms) {
   if (ms < 0.3) return "stille";
   if (ms < 3.4) return "svag vind";
+  if (ms < 5.5) return "let vind";
   if (ms < 8) return "jævn vind";
   if (ms < 10.8) return "frisk vind";
   if (ms < 13.9) return "hård vind";
-  if (ms < 20.8) return "kuling";
-  return "storm";
+  if (ms < 17.2) return "stiv kuling";
+  if (ms < 20.8) return "hård kuling";
+  if (ms < 24.5) return "stormende kuling";
+  if (ms < 28.5) return "storm";
+  if (ms < 32.7) return "stærk storm";
+  return "orkan";
 }
 
 /* ---------- vejrkoder og ikoner ---------- */
 const WMO = {
   0: ["Klart", "clear"], 1: ["Overvejende klart", "mostly"], 2: ["Delvist skyet", "partly"], 3: ["Overskyet", "overcast"],
   45: ["Tåge", "fog"], 48: ["Rimtåge", "fog"],
-  51: ["Let finregn", "drizzle"], 53: ["Finregn", "drizzle"], 55: ["Kraftig finregn", "drizzle"],
-  56: ["Underafkølet finregn", "sleet"], 57: ["Kraftig underafkølet finregn", "sleet"],
+  51: ["Let støvregn", "drizzle"], 53: ["Støvregn", "drizzle"], 55: ["Kraftig støvregn", "drizzle"],
+  56: ["Underafkølet støvregn", "sleet"], 57: ["Kraftig underafkølet støvregn", "sleet"],
   61: ["Let regn", "rain"], 63: ["Regn", "rain"], 65: ["Kraftig regn", "rain"],
   66: ["Isslag", "sleet"], 67: ["Kraftigt isslag", "sleet"],
   71: ["Let snefald", "snow"], 73: ["Snefald", "snow"], 75: ["Kraftigt snefald", "snow"], 77: ["Snekorn", "snow"],
@@ -103,7 +115,6 @@ const ICONS = {
   car: '<svg viewBox="0 0 24 24"><path d="M4.5 16.5h15M5 16.5V19H7v-2.5M17 16.5V19h2v-2.5"/><path d="M3.8 16.5l1-5.2a2 2 0 0 1 2-1.6h10.4a2 2 0 0 1 2 1.6l1 5.2z"/><path d="M6.6 13h10.8"/></svg>',
   hike: '<svg viewBox="0 0 24 24"><circle cx="13" cy="4.6" r="1.9"/><path d="M12 8.4l-3 3.2 2.4 2.4.6 6M11.4 14l-3.6 2.6-1.4 4M14.4 9.4l2.6 2.2 3 .6M17.6 21V9"/></svg>',
   plant: '<svg viewBox="0 0 24 24"><path d="M12 21v-7.5"/><path d="M12 13.5C12 9.9 9.4 7.2 5.6 6.6c-.5 3.9 1.9 7 6.4 6.9z"/><path d="M12 13.5c0-3.6 2.6-6.3 6.4-6.9.5 3.9-1.9 7-6.4 6.9z"/><path d="M8.6 21h6.8"/></svg>',
-  alert: '<svg viewBox="0 0 24 24"><path d="M12 4.4l8.4 14.6H3.6z"/><path d="M12 10v4M12 16.6h.01" stroke-width="2"/></svg>',
   drop: '<svg viewBox="0 0 24 24"><path d="M12 3.6s5.6 6 5.6 9.6a5.6 5.6 0 1 1-11.2 0C6.4 9.6 12 3.6 12 3.6z"/></svg>',
   sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></svg>',
   wind: '<svg viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 1 0-3-3M3 14h14a3 3 0 1 1-3 3M3 11.5h7"/></svg>',
@@ -300,15 +311,15 @@ function renderHero(d) {
   $("#now-temp").textContent = Math.round(n.temp);
   $("#now-desc").textContent = codeText(n.code);
   $("#now-feels").textContent = `${Math.round(n.feels)}°`;
-  $("#now-updated").textContent = `opdateret ${hhmm(n.t)}`;
+  $("#now-updated").textContent = `opdateret kl. ${hhmm(n.t)}`;
   const today = d.days[0];
   const uvNow = d.hours[d.nowIndex] ? d.hours[d.nowIndex].uv : today.uv;
   const stats = [
-    ["Vind", `${r1(n.wind)} <small>m/s ${dir(n.wdir)}</small>`, `stød ${r1(n.gust)} m/s`],
-    ["Nedbør i dag", `${r1(today.precip)} <small>mm</small>`, `${Math.round(today.prob)}% sandsynlighed`],
-    ["UV nu", `${r1(uvNow)}`, `max ${r1(today.uv)} i dag`],
+    ["Vind", `${fmt(n.wind)} <small>m/s ${dir(n.wdir)}</small>`, `stød ${fmt(n.gust)} m/s`],
+    ["Nedbør i dag", `${fmt(today.precip)} <small>mm</small>`, `${Math.round(today.prob)}% sandsynlighed`],
+    ["UV nu", `${fmt(uvNow)}`, `max ${fmt(today.uv)} i dag`],
     ["Luftfugtighed", `${Math.round(n.rh)}<small>%</small>`, `skydække ${Math.round(n.cloud)}%`],
-    ["Sol", `${hhmm(today.sunrise)}–${hhmm(today.sunset)}`, `${r1(today.sunshine)} soltimer`],
+    ["Sol", `${hhmm(today.sunrise)}–${hhmm(today.sunset)}`, `${fmt(today.sunshine)} soltimer`],
     ["Døgn", `${Math.round(today.tmax)}° / ${Math.round(today.tmin)}°`, codeText(today.code)]
   ];
   $("#hero-stats").innerHTML = stats
@@ -320,7 +331,7 @@ function planCard({ icon, title, sub, score, verdict, notes, pill }) {
   return `<article class="card plan">
     <div class="plan-head">${icon}<div><h3>${title}</h3><p>${sub}</p></div></div>
     <div>
-      <div class="gauge"><b style="color:${scoreColor(score)}">${r1(score)}</b><span>/ 10</span></div>
+      <div class="gauge"><b style="color:${scoreColor(score)}">${fmt(score)}</b><span>/ 10</span></div>
       <div class="bar" style="margin-top:8px"><i style="width:${score * 10}%;background:${scoreColor(score)}"></i></div>
       <div class="verdict" style="margin-top:9px;color:${scoreColor(score)}">${verdict}</div>
     </div>
@@ -341,10 +352,10 @@ function renderPlan(d) {
   if (has(a.codes, ICY) || (a.minTemp <= 1 && a.precip > 0)) dNotes.push(["neg", "Risiko for isslag — regn omkring frysepunktet"]);
   if (has(a.codes, SNOWY)) dNotes.push(["neg", "Sne eller slud i perioden"]);
   if (a.minVis < 4000) dNotes.push(["neg", `Nedsat sigt, ned til ${Math.round(a.minVis / 1000)} km`]);
-  if (a.maxGust >= 15) dNotes.push(["neg", `Vindstød op til ${r1(a.maxGust)} m/s — pas på ved broer og overhaling`]);
-  else if (a.maxGust >= 11) dNotes.push(["warn", `Vindstød op til ${r1(a.maxGust)} m/s`]);
-  if (a.precip >= 3) dNotes.push(["neg", `${r1(a.precip)} mm regn — vandplaning på motorvej`]);
-  else if (a.precip >= 0.4) dNotes.push(["warn", `Våd vejbane, ${r1(a.precip)} mm nedbør`]);
+  if (a.maxGust >= 15) dNotes.push(["neg", `Vindstød op til ${fmt(a.maxGust)} m/s — pas på ved broer og overhaling`]);
+  else if (a.maxGust >= 11) dNotes.push(["warn", `Vindstød op til ${fmt(a.maxGust)} m/s`]);
+  if (a.precip >= 3) dNotes.push(["neg", `${fmt(a.precip)} mm regn — vandplaning på motorvej`]);
+  else if (a.precip >= 0.4) dNotes.push(["warn", `Våd vejbane, ${fmt(a.precip)} mm nedbør`]);
   if (a.minTemp <= 3 && a.minTemp > 1) dNotes.push(["warn", "Nær frysepunktet — broer og skyggefulde strækninger først"]);
   const glareHour = next.find((h) => h.isDay && h.cloud < 55 && lowSun(h, d.days.find((x) => x.key === h.key)));
   if (glareHour) dNotes.push(["warn", `Lavtstående sol omkring kl. ${glareHour.hh} — hav solbriller klar`]);
@@ -354,11 +365,11 @@ function renderPlan(d) {
     return !w || s < w.s ? { s, h } : w;
   }, null);
   const dPill = worstDrive && worstDrive.s < 6.8
-    ? `Værst omkring <b>kl. ${worstDrive.h.hh}</b> (${r1(worstDrive.s)}/10). ${(() => {
+    ? `Værst omkring <b>kl. ${worstDrive.h.hh}</b> (${fmt(worstDrive.s)}/10). ${(() => {
         const bw = bestWindow(next, (h) => driveScore(h, d.days.find((x) => x.key === h.key)), 7.5, 0, 23);
         return bw ? `Bedste vindue <b>${bw.start.hh}–${bw.end.hh}</b>.` : "Ingen rigtig gode timer i perioden.";
       })()}`
-    : "Ingen kritiske timer de næste 12 timer.";
+    : "Ingen kritiske perioder de næste 12 timer.";
 
   /* Udendørs */
   const oScores = next.map(outdoorScore);
@@ -367,8 +378,8 @@ function renderPlan(d) {
   oNotes.push(["", `Føles som ${Math.round(a.minFeels)}–${Math.round(a.maxFeels)}° i perioden`]);
   if (a.maxProb >= 40) oNotes.push(["warn", `Op til ${Math.round(a.maxProb)}% regnsandsynlighed, ${a.rainHours} timer med nedbør`]);
   else oNotes.push(["pos", "Lav regnrisiko — regnjakke er valgfri"]);
-  if (a.maxWind >= 8) oNotes.push(["warn", `${windWord(a.maxWind)}, op til ${r1(a.maxWind)} m/s`]);
-  if (a.maxUv >= 6) oNotes.push(["warn", `UV-indeks op til ${r1(a.maxUv)} — solcreme og skygge midt på dagen`]);
+  if (a.maxWind >= 8) oNotes.push(["warn", `${windWord(a.maxWind)}, op til ${fmt(a.maxWind)} m/s`]);
+  if (a.maxUv >= 6) oNotes.push(["warn", `UV-indeks op til ${fmt(a.maxUv)} — solcreme og skygge midt på dagen`]);
   if (has(a.codes, THUNDER)) oNotes.push(["neg", "Torden i perioden — hold dig væk fra åbent land og vand"]);
   if (a.maxFeels > 28) oNotes.push(["neg", "Varmt — drik rigeligt og læg hård træning tidligt eller sent"]);
   if (a.minFeels < 0) oNotes.push(["neg", "Frost — husk lag på lag og handsker"]);
@@ -381,13 +392,13 @@ function renderPlan(d) {
   const w = water(today);
   const sunH = terraceSun(today);
   const pNotes = [];
-  pNotes.push(["", `Fordampning ${r1(w.need)} mm mod ${r1(w.rain)} mm effektiv regn i potterne`]);
-  if (w.deficit >= 2.5) pNotes.push(["neg", `Vand ca. ${w.ml} ml pr. 25 cm potte (${r1(w.deficit)} l/m²)`]);
+  pNotes.push(["", `Fordampning ${fmt(w.need)} mm mod ${fmt(w.rain)} mm effektiv regn i potterne`]);
+  if (w.deficit >= 2.5) pNotes.push(["neg", `Vand ca. ${w.ml} ml pr. 25 cm potte (${fmt(w.deficit)} l/m²)`]);
   else if (w.deficit >= 1) pNotes.push(["warn", `Let vanding, ca. ${w.ml} ml pr. potte`]);
   else pNotes.push(["pos", "Regnen dækker dagens behov — tjek kun de overdækkede potter"]);
-  if (today.tmax >= 28 || today.uv >= 7) pNotes.push(["warn", `${Math.round(today.tmax)}° og UV ${r1(today.uv)} — skyggenet eller flyt sarte planter kl. 12–16`]);
+  if (today.tmax >= 28 || today.uv >= 7) pNotes.push(["warn", `${Math.round(today.tmax)}° og UV ${fmt(today.uv)} — skyggenet eller flyt sarte planter kl. 12–16`]);
   if (today.tmin <= 3) pNotes.push(["neg", `Ned til ${Math.round(today.tmin)}° i nat — dæk til eller flyt ind`]);
-  if (today.gust >= 13) pNotes.push(["neg", `Vindstød ${r1(today.gust)} m/s — flyt høje potter i læ`]);
+  if (today.gust >= 13) pNotes.push(["neg", `Vindstød ${fmt(today.gust)} m/s — flyt høje potter i læ`]);
   const pScore = clamp(10 - (w.deficit >= 4 ? 2.5 : w.deficit >= 2.5 ? 1.2 : 0)
     - (today.tmax >= 30 ? 3 : today.tmax >= 27 ? 1.5 : 0)
     - (today.tmin <= 0 ? 4 : today.tmin <= 3 ? 2 : 0)
@@ -395,7 +406,7 @@ function renderPlan(d) {
     - (today.precip >= 20 ? 1.5 : 0), 0, 10);
   const pVerdict = pScore >= 8 ? "Planterne har det fint" : pScore >= 6 ? "Lidt pasning i dag" : pScore >= 4 ? "Kræver opmærksomhed" : "Grib ind i dag";
   const evening = today.sunset ? hhmm(today.sunset) : "20:00";
-  const pPill = `Sol på terrassen <b>${sunH} timer</b> · vand tidligt (før 09) eller efter <b>${evening}</b>`;
+  const pPill = `Sol på terrassen <b>${sunH} timer</b> · vand tidligt (før kl. 9) eller efter <b>kl. ${evening}</b>`;
 
   $("#plan-grid").innerHTML =
     planCard({ icon: ICONS.car, title: "Kørsel", sub: "Næste 12 timer", score: dAvg, verdict: verdictDrive(dAvg), notes: dNotes.slice(0, 4), pill: dPill }) +
@@ -439,18 +450,57 @@ function renderChart(hours, day) {
       aria-label="Temperatur og nedbør time for time">${nights.join("")}${grid}${fill}${line("feels", "feelsline")}${line("temp", "templine")}${bars}${labels}</svg>`;
   $("#today-sub").textContent = day
     ? `${dayName(day.key)} ${dayDate(day.key)} — ${hours.length} timer. Skyggede felter er nat.`
-    : "Temperatur, nedbør og vind de næste 24 timer.";
+    : "Temperatur, nedbør og vind de næste 24 timer. Tryk på en time for alle detaljer.";
+}
+
+function windArrow(deg) {
+  return `<svg class="warrow" viewBox="0 0 24 24" style="transform:rotate(${Math.round(num(deg)) + 180}deg)" aria-hidden="true"><path d="M12 20V5.5M12 5.5 7.8 10M12 5.5l4.2 4.5"/></svg>`;
 }
 
 function renderHours(hours, nowT) {
-  $("#hours").innerHTML = hours.map((h) => `
-    <div class="hour${h.t === nowT ? " now" : ""}" title="${esc(codeText(h.code))} · vind ${r1(h.wind)} m/s (stød ${r1(h.gust)}) · UV ${r1(h.uv)}">
-      <div class="h">${h.t === nowT ? "nu" : h.hh}</div>
+  state.viewHours = hours;
+  state.hourSel = -1;
+  $("#hour-detail").hidden = true;
+  $("#hours").innerHTML = hours.map((h, i) => `
+    <button type="button" class="hour${h.t === nowT ? " now" : ""}" data-i="${i}" aria-expanded="false"
+      aria-label="Detaljer for kl. ${h.hh}">
+      <span class="h">${h.t === nowT ? "nu" : h.hh}</span>
       ${weatherIcon(h.code, h.isDay)}
-      <div class="w"><b style="color:var(--text)">${Math.round(h.temp)}°</b></div>
-      <div class="p">${h.precip >= 0.05 ? `${r1(h.precip)} mm` : h.prob >= 20 ? `${Math.round(h.prob)}%` : ""}</div>
-      <div class="w">${r1(h.wind)}<span style="color:var(--text-3)"> ${dir(h.wdir)}</span></div>
-    </div>`).join("");
+      <span class="w"><b style="color:var(--text)">${Math.round(h.temp)}°</b></span>
+      <span class="p">${h.precip >= 0.05 ? `${fmt(h.precip)} mm` : h.prob >= 20 ? `${Math.round(h.prob)}%` : ""}</span>
+      <span class="w wind">${windArrow(h.wdir)}${fmt(h.wind)}</span>
+    </button>`).join("");
+  $("#hours").querySelectorAll(".hour").forEach((b) => b.addEventListener("click", () => toggleHour(+b.dataset.i)));
+}
+
+/* Detaljepanel under timelisten — erstatter hover-tooltips, som ikke findes på mobil. */
+function toggleHour(i) {
+  const panel = $("#hour-detail");
+  const close = !panel.hidden && state.hourSel === i;
+  state.hourSel = close ? -1 : i;
+  $("#hours").querySelectorAll(".hour").forEach((b) => {
+    const on = !close && +b.dataset.i === i;
+    b.classList.toggle("sel", on);
+    b.setAttribute("aria-expanded", String(on));
+  });
+  if (close) { panel.hidden = true; return; }
+  const h = state.viewHours[i];
+  const rows = [
+    ["Temperatur", `${Math.round(h.temp)}°`, `føles som ${Math.round(h.feels)}°`],
+    ["Nedbør", `${fmt(h.precip)} mm`, `${Math.round(h.prob)}% risiko`],
+    ["Vind", `${fmt(h.wind)} m/s fra ${dir(h.wdir)}`, `${windWord(h.wind)} · stød ${fmt(h.gust)} m/s`],
+    ["UV-indeks", fmt(h.uv), h.uv >= 6 ? "brug solcreme" : h.uv >= 3 ? "moderat" : "lavt"],
+    ["Luftfugtighed", `${Math.round(h.rh)}%`, `skydække ${Math.round(h.cloud)}%`],
+    ["Sigtbarhed", `${fmt(Math.min(h.vis, 24000) / 1000)} km`, h.vis < 4000 ? "nedsat sigt" : "god sigt"]
+  ];
+  panel.innerHTML = `
+    <div class="hd-head">
+      ${weatherIcon(h.code, h.isDay)}
+      <div><b>${dayName(h.key)} kl. ${h.hh}</b><span>${codeText(h.code)}</span></div>
+    </div>
+    <dl class="hd-grid">${rows.map(([k, v, sub]) =>
+      `<div><dt>${k}</dt><dd>${v}</dd><dd class="sub"><small>${sub}</small></dd></div>`).join("")}</dl>`;
+  panel.hidden = false;
 }
 
 function renderWeek(d) {
@@ -473,13 +523,13 @@ function renderWeek(d) {
         <span class="hi">${Math.round(day.tmax)}°</span>
       </span>
       <span class="meta">
-        <span>${ICONS.drop.replace("<svg", '<svg style="width:13px;height:13px;vertical-align:-2px;color:var(--rain)"')} <b>${r1(day.precip)}</b> mm</span>
-        <span>${ICONS.wind.replace("<svg", '<svg style="width:13px;height:13px;vertical-align:-2px"')} <b>${r1(day.wind)}</b> m/s</span>
+        <span>${ICONS.drop.replace("<svg", '<svg style="width:13px;height:13px;vertical-align:-2px;color:var(--rain)"')} <b>${fmt(day.precip)}</b> mm</span>
+        <span>${ICONS.wind.replace("<svg", '<svg style="width:13px;height:13px;vertical-align:-2px"')} <b>${fmt(day.wind)}</b> m/s</span>
       </span>
-      <span class="uv"><span>UV <b style="color:var(--text)">${r1(day.uv)}</b></span><span>${r1(day.sunshine)} t sol</span></span>
+      <span class="uv"><span>UV <b style="color:var(--text)">${fmt(day.uv)}</b></span><span>${fmt(day.sunshine)} t sol</span></span>
       <span class="chips">
-        <span class="chip ${scoreClass(dScore)}" title="Kørsel ${r1(dScore)}/10">${ICONS.car}</span>
-        <span class="chip ${scoreClass(oScore)}" title="Udendørs ${r1(oScore)}/10">${ICONS.hike}</span>
+        <span class="chip ${scoreClass(dScore)}" title="Kørsel ${fmt(dScore)}/10">${ICONS.car}</span>
+        <span class="chip ${scoreClass(oScore)}" title="Udendørs ${fmt(oScore)}/10">${ICONS.hike}</span>
         <span class="chip ${scoreClass(pScore)}" title="Planter: ${w.label}">${ICONS.plant}</span>
       </span>
     </button>`;
@@ -499,10 +549,10 @@ function renderPlants(d) {
   const wetDay = d.days.find((x) => x.precip >= 15);
 
   $("#plant-top").innerHTML = [
-    ["Vanding i dag", `${w.ml} ml`, `pr. 25 cm potte · ${r1(w.deficit)} l/m²`],
-    ["Sol på terrassen", `${sunH} t`, `${r1(today.sunshine)} soltimer i alt · UV max ${r1(today.uv)}`],
-    ["Regn i potterne", `${r1(w.rain)} mm`, `af ${r1(today.precip)} mm nedbør (læ-effekt)`],
-    ["Ugens behov", `${r1(week)} l/m²`, `${r1(rain3)} mm regn de næste 3 dage`]
+    ["Vanding i dag", `${w.ml} ml`, `pr. 25 cm potte · ${fmt(w.deficit)} l/m²`],
+    ["Sol på terrassen", `${sunH} t`, `${fmt(today.sunshine)} soltimer i alt · UV max ${fmt(today.uv)}`],
+    ["Regn i potterne", `${fmt(w.rain)} mm`, `af ${fmt(today.precip)} mm nedbør (læ-effekt)`],
+    ["Ugens behov", `${fmt(week)} l/m²`, `${fmt(rain3)} mm regn de næste 3 dage`]
   ].map(([k, v, s]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
 
   $("#plant-days").innerHTML = d.days.map((day, i) => {
@@ -512,7 +562,7 @@ function renderPlants(d) {
       <span class="pd-name">${i === 0 ? "I dag" : dayName(day.key)} <span style="color:var(--text-2);font-weight:400">${Math.round(day.tmax)}°/${Math.round(day.tmin)}°</span></span>
       <span class="water">
         <span class="track"><i style="width:${clamp((dw.deficit / max) * 100, 2, 100)}%"></i></span>
-        <span class="amount">${r1(dw.deficit)} l/m² · ${dw.ml} ml</span>
+        <span class="amount">${fmt(dw.deficit)} l/m² · ${dw.ml} ml</span>
       </span>
       <span class="tag ${dw.tone}">${dw.label}</span>
     </div>`;
@@ -521,11 +571,11 @@ function renderPlants(d) {
   const notes = [];
   if (frostDay) notes.push(["bad", ICONS.snow, `<b>Frostrisiko ${frostDay === today ? "i nat" : dayName(frostDay.key).toLowerCase()}</b> — ned til ${Math.round(frostDay.tmin)}°. Flyt citrus, pelargonier og andre sarte potter i læ eller ind, eller dæk med fiberdug.`]);
   if (hotDay) notes.push(["warn", ICONS.sun, `<b>${Math.round(hotDay.tmax)}° ${hotDay === today ? "i dag" : dayName(hotDay.key).toLowerCase()}</b> — sydvendte potter tørrer hurtigt ud. Giv skygge kl. 12–16, og undgå at vande på bladene i fuld sol.`]);
-  if (windDay) notes.push(["warn", ICONS.wind, `<b>Vindstød op til ${r1(windDay.gust)} m/s ${windDay === today ? "i dag" : dayName(windDay.key).toLowerCase()}</b> — sæt høje potter ned, bind espalier og tomater op. Vind tørrer potterne lige så hurtigt som sol.`]);
-  if (wetDay) notes.push(["warn", ICONS.drop, `<b>${r1(wetDay.precip)} mm regn ${wetDay === today ? "i dag" : dayName(wetDay.key).toLowerCase()}</b> — tøm underskåle så rødderne ikke står i vand, og tjek at drænhullerne er frie.`]);
-  if (rain3 < 2 && week > 8) notes.push(["warn", ICONS.drop, `<b>Tørt de næste dage</b> — kun ${r1(rain3)} mm regn på 3 dage mod ${r1(week)} l/m² fordampning. Vand dagligt, og overvej at samle regnvand op når det kommer.`]);
+  if (windDay) notes.push(["warn", ICONS.wind, `<b>Vindstød op til ${fmt(windDay.gust)} m/s ${windDay === today ? "i dag" : dayName(windDay.key).toLowerCase()}</b> — sæt høje potter ned, bind espalier og tomater op. Vind tørrer potterne lige så hurtigt som sol.`]);
+  if (wetDay) notes.push(["warn", ICONS.drop, `<b>${fmt(wetDay.precip)} mm regn ${wetDay === today ? "i dag" : dayName(wetDay.key).toLowerCase()}</b> — tøm underskåle så rødderne ikke står i vand, og tjek at drænhullerne er frie.`]);
+  if (rain3 < 2 && week > 8) notes.push(["warn", ICONS.drop, `<b>Tørt de næste dage</b> — kun ${fmt(rain3)} mm regn på 3 dage mod ${fmt(week)} l/m² fordampning. Vand dagligt, og overvej at samle regnvand op når det kommer.`]);
   if (!notes.length) notes.push(["good", ICONS.check, "Ingen varslinger for terrassen i denne uge — hold den normale rytme med vanding og gødning."]);
-  notes.push(["good", ICONS.check, `Vand tidligt om morgenen eller efter solnedgang (${hhmm(today.sunset)}) — så fordamper mindst muligt, og bladene når at tørre inden natten.`]);
+  notes.push(["good", ICONS.check, `Vand tidligt om morgenen eller efter solnedgang (kl. ${hhmm(today.sunset)}) — så fordamper mindst muligt, og bladene når at tørre inden natten.`]);
   $("#plant-notes").innerHTML = notes.map(([cls, ic, txt]) => `<li class="${cls}">${ic}<span>${txt}</span></li>`).join("");
 }
 
@@ -534,7 +584,7 @@ function renderDrive(d) {
   const scored = next.map((h) => ({ h, s: driveScore(h, d.days.find((x) => x.key === h.key)) }));
 
   const bar = `<div class="hourbar">${scored.map(({ h, s }, i) => `
-    <span class="cell" title="kl. ${h.hh}: ${r1(s)}/10 · ${esc(codeText(h.code))}">
+    <span class="cell" title="kl. ${h.hh}: ${fmt(s)}/10 · ${esc(codeText(h.code))}">
       <i style="background:${scoreColor(s)};opacity:${0.35 + (10 - s) / 15}"></i>
       <span>${i % 3 === 0 ? h.hh.slice(0, 2) : ""}</span>
     </span>`).join("")}</div>`;
@@ -553,9 +603,9 @@ function renderDrive(d) {
     if (has(a.codes, ICY)) why.push("isslag");
     if (has(a.codes, SNOWY)) why.push("sne");
     if (a.minVis < 4000) why.push(`sigt ned til ${Math.round(a.minVis / 1000)} km`);
-    if (a.precip >= 1) why.push(`${r1(a.precip)} mm regn`);
+    if (a.precip >= 1) why.push(`${fmt(a.precip)} mm regn`);
     else if (a.precip >= 0.2) why.push("vådt");
-    if (a.maxGust >= 11) why.push(`vindstød ${r1(a.maxGust)} m/s`);
+    if (a.maxGust >= 11) why.push(`vindstød ${fmt(a.maxGust)} m/s`);
     if (a.minTemp <= 3) why.push(`ned til ${Math.round(a.minTemp)}°`);
     const label = g.band === "g" ? "Gode forhold" : g.band === "o" ? "Vær opmærksom" : "Undgå hvis muligt";
     const color = g.band === "g" ? "var(--good)" : g.band === "o" ? "var(--ok)" : "var(--bad)";
@@ -591,8 +641,8 @@ function renderAll() {
   selectDay(0);
   const p = state.place;
   $("#place-line").textContent = [p.name, p.region, p.country].filter(Boolean).join(", ");
-  $("#foot-meta").textContent = `${p.name} · ${p.lat.toFixed(3)}°, ${p.lon.toFixed(3)}° · tidszone ${d.tz}${state.demo ? " · demo-data" : ""}`;
-  document.title = `${Math.round(d.now.temp)}° ${p.name} — Vejr & Planlægning`;
+  $("#foot-meta").textContent = `${p.name} · ${p.lat.toFixed(3).replace(".", ",")}°, ${p.lon.toFixed(3).replace(".", ",")}° · tidszone ${d.tz}${state.demo ? " · demo-data" : ""}`;
+  document.title = `${Math.round(d.now.temp)}° ${p.name} — Vejr & planlægning`;
 }
 
 function banner(msg, isError) {
@@ -603,44 +653,54 @@ function banner(msg, isError) {
   el.textContent = msg;
 }
 
+let loadSeq = 0;
 async function load(place) {
+  const seq = ++loadSeq;
   state.place = place;
-  localStorage.setItem("wd.place", JSON.stringify(place));
+  store.set("wd.place", JSON.stringify(place));
   $("#refresh-btn").classList.add("spin");
   $("#place-line").textContent = `Henter vejr for ${place.name}…`;
+  let data, demo, err;
   try {
-    state.data = shape(await loadWeather(place));
-    state.demo = false;
-    banner(null);
-  } catch (err) {
-    state.data = shape(demoData(place));
-    state.demo = true;
-    banner(`Kunne ikke hente live data (${err.message}) — viser demo-data, så du kan se dashboardet.`, true);
+    data = shape(await loadWeather(place));
+    demo = false;
+  } catch (e) {
+    data = shape(demoData(place));
+    demo = true;
+    err = e;
   }
+  if (seq !== loadSeq) return; // et nyere kald er i gang eller færdigt
+  state.data = data;
+  state.demo = demo;
+  banner(demo ? `Kunne ikke hente live data (${err.message}) — viser demo-data, så du kan se dashboardet.` : null, demo);
   renderAll();
   $("#refresh-btn").classList.remove("spin");
 }
 
 /* Bysøgning */
-let searchTimer;
+let searchTimer, searchSeq = 0, searchHits = [];
 $("#search-input").addEventListener("input", (e) => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
   if (q.length < 2) { $("#search-results").hidden = true; return; }
   searchTimer = setTimeout(async () => {
+    const seq = ++searchSeq;
     try {
       const res = await fetch(`${GEO}?name=${encodeURIComponent(q)}&count=6&language=da&format=json`);
       const js = await res.json();
+      if (seq !== searchSeq) return; // et nyere søgeord er undervejs
       const box = $("#search-results");
       if (!js.results || !js.results.length) { box.hidden = true; return; }
-      box.innerHTML = js.results.map((r) => `<button type="button" data-p='${esc(JSON.stringify({
+      searchHits = js.results.map((r) => ({
         name: r.name, region: r.admin1 || "", country: r.country || "", lat: r.latitude, lon: r.longitude
-      }))}'>${esc(r.name)}<span>${esc([r.admin1, r.country].filter(Boolean).join(", "))}</span></button>`).join("");
+      }));
+      box.innerHTML = searchHits.map((r, i) =>
+        `<button type="button" data-i="${i}">${esc(r.name)}<span>${esc([r.region, r.country].filter(Boolean).join(", "))}</span></button>`).join("");
       box.hidden = false;
       box.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
         box.hidden = true;
         $("#search-input").value = "";
-        load(JSON.parse(b.dataset.p.replace(/&quot;/g, '"').replace(/&amp;/g, "&")));
+        load(searchHits[+b.dataset.i]);
       }));
     } catch { /* offline: ingen søgeresultater */ }
   }, 280);
@@ -679,7 +739,7 @@ $("#theme-btn").addEventListener("click", () => {
   const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const next = cur === "auto" ? (dark ? "light" : "dark") : cur === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
-  localStorage.setItem("wd.theme", next);
+  store.set("wd.theme", next);
 });
 
 /* ---------- demo-data (bruges kun uden netværk) ---------- */
@@ -752,11 +812,11 @@ function demoData(place) {
 
 /* ---------- start ---------- */
 (function init() {
-  const savedTheme = localStorage.getItem("wd.theme");
+  const savedTheme = store.get("wd.theme");
   if (savedTheme) document.documentElement.dataset.theme = savedTheme;
   let place = DEFAULT_PLACE;
   try {
-    const saved = JSON.parse(localStorage.getItem("wd.place") || "null");
+    const saved = JSON.parse(store.get("wd.place") || "null");
     if (saved && typeof saved.lat === "number") place = saved;
   } catch { /* ignorer */ }
   load(place);
