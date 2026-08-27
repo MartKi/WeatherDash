@@ -18,6 +18,7 @@
   --good: #1f9d63;
   --ok: #d19a12;
   --bad: #d4503c;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
   --shadow: 0 1px 2px rgba(16,28,50,.06), 0 8px 24px -12px rgba(16,28,50,.18);
   --radius: 16px;
   --maxw: 1180px;
@@ -52,6 +53,7 @@
   --accent: #6ea0ff; --accent-soft: #1a2740;
   --warm: #ffa94d; --hot: #ff7a5c; --cold: #63b8f5; --rain: #6ea0ff;
   --good: #45c98a; --ok: #f2c14e; --bad: #ff7a68;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -24px rgba(0,0,0,.8);
 }
 
@@ -250,6 +252,63 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .hd-grid dd { margin: 2px 0 0; font-size: 14.5px; font-weight: 550; }
 .hd-grid dd.sub { margin-top: 0; font-weight: 400; }
 .hd-grid dd.sub small { color: var(--text-2); font-size: 12px; }
+
+/* ---------- Model comparison ---------- */
+.models-card { padding: 18px; display: grid; gap: 16px; }
+.models-status { margin: 0; color: var(--text-2); font-size: 13.5px; }
+#models-body { display: grid; gap: 16px; }
+.models-verdict { margin: 0; font-size: 14.5px; line-height: 1.5; }
+.models-verdict b { font-weight: 600; }
+.models-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12.5px; }
+.mlg { display: inline-flex; align-items: center; gap: 7px; color: var(--text-2); }
+.mlg i { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+.mlg small { color: var(--text-3); }
+
+.mchart-figure { margin: 0; }
+.mchart-wrap { position: relative; touch-action: pan-y; }
+#mchart svg { display: block; width: 100%; height: auto; overflow: visible; }
+#mchart .mband { fill: color-mix(in srgb, var(--text-3) 16%, transparent); stroke: none; }
+#mchart .mline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+#mchart .mgrid, #mchart .mday { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+#mchart .mday { stroke: var(--line-soft); }
+#mchart .mcross { stroke: var(--text-3); stroke-width: 1; vector-effect: non-scaling-stroke; }
+#mchart text { stroke: none; font-size: 12px; }
+#mchart .maxis { fill: var(--text-3); }
+#mchart .mlabel { font-size: 12.5px; font-weight: 600; }
+.mchart-figure figcaption { margin-top: 8px; color: var(--text-2); font-size: 12.5px; }
+
+.mtip {
+  position: absolute; top: 6px; width: 144px; pointer-events: none; z-index: 2;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 8px 10px; font-size: 12px;
+}
+.mtip b { display: block; margin-bottom: 5px; font-size: 12.5px; }
+.mtip span { display: flex; align-items: center; gap: 6px; color: var(--text-2); line-height: 1.7; }
+.mtip i { width: 9px; height: 3px; border-radius: 2px; flex: none; }
+.mtip em { margin-left: auto; font-style: normal; font-weight: 600; color: var(--text); }
+.mtip .tip-rain { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line-soft); color: var(--rain); }
+
+.rainstrip-block { display: grid; gap: 8px; }
+.mini-h { font-size: 13px; font-weight: 600; }
+.rstrip { display: flex; gap: 2px; }
+.rcell { flex: 1; min-width: 0; height: 22px; border-radius: 3px; }
+.rlabels { display: flex; justify-content: space-between; color: var(--text-3); font-size: 11.5px; }
+.rainscale { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-2); }
+.rkey { display: inline-flex; align-items: center; gap: 5px; }
+.rkey i { width: 14px; height: 10px; border-radius: 3px; display: inline-block; }
+.rkey-txt { color: var(--text-3); }
+
+.mtable-details summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
+.mtable-details summary:hover { color: var(--accent); }
+.mtable-scroll { overflow-x: auto; margin-top: 10px; }
+.mtable { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 460px; }
+.mtable th, .mtable td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.mtable thead th { color: var(--text-2); font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; }
+.mtable thead th:first-child { text-align: left; }
+.mtable tbody th { text-align: left; font-weight: 600; }
+.mtable tbody th small { color: var(--text-3); font-weight: 400; }
+.mtable tbody tr:last-child th, .mtable tbody tr:last-child td { border-bottom: 0; }
+.tdot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
 
 /* ---------- Week ---------- */
 .week-card { padding: 6px 8px; }
