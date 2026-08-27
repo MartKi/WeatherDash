@@ -90,6 +90,37 @@
     </div>
   </section>
 
+  <!-- MODELLER -->
+  <section class="section" aria-labelledby="models-h">
+    <div class="section-head">
+      <h2 id="models-h">Er modellerne enige?</h2>
+      <p class="section-sub">Fire nationale vejrmodeller for det samme sted. Hvor de er uenige, er prognosen usikker — og det er værd at vide, før du planlægger.</p>
+    </div>
+    <div class="card models-card" id="models-card">
+      <p class="models-status" id="models-status">Henter modeller…</p>
+      <div id="models-body" hidden>
+        <p class="models-verdict" id="models-verdict"></p>
+        <div class="models-legend" id="models-legend"></div>
+        <figure class="mchart-figure">
+          <div class="mchart-wrap" id="mchart-wrap">
+            <div id="mchart"></div>
+            <div class="mtip" id="mtip" hidden></div>
+          </div>
+          <figcaption id="mchart-cap">Temperatur de næste 48 timer. Det tonede felt er spændet mellem den koldeste og varmeste model.</figcaption>
+        </figure>
+        <div class="rainstrip-block">
+          <h3 class="mini-h">Hvor mange modeller ser regn?</h3>
+          <div id="rainstrip"></div>
+          <div class="rainscale" id="rainscale"></div>
+        </div>
+        <details class="mtable-details">
+          <summary>Vis tallene som tabel</summary>
+          <div class="mtable-scroll"><table class="mtable" id="mtable"></table></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
   <!-- UGEN -->
   <section class="section" aria-labelledby="week-h">
     <div class="section-head">

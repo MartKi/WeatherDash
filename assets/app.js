@@ -6,6 +6,16 @@ const GEO = "https://geocoding-api.open-meteo.com/v1/search";
 
 const DEFAULT_PLACE = { name: "København", region: "Hovedstaden", country: "Danmark", lat: 55.6761, lon: 12.5683 };
 
+/* De fire modeller der sammenlignes. Slot-numrene peger på --s1..--s4 i CSS. */
+const MODELS = [
+  { id: "dmi_seamless", short: "DMI", name: "DMI Harmonie", origin: "Danmark", slot: 1 },
+  { id: "ecmwf_ifs025", short: "ECMWF", name: "ECMWF IFS", origin: "Europa", slot: 2 },
+  { id: "icon_seamless", short: "ICON", name: "ICON", origin: "DWD, Tyskland", slot: 3 },
+  { id: "gfs_seamless", short: "GFS", name: "GFS", origin: "NOAA, USA", slot: 4 }
+];
+const MODEL_HOURS = 48;   // sammenligningens horisont
+const RAIN_MM = 0.2;      // hvornår en model "ser regn" i en time
+
 /* Antagelser for terrassen — juster her hvis din terrasse er anderledes. */
 const TERRACE = {
   southFactor: 1.25,   // fuld sydsol fordamper mere end en åben mark
@@ -13,7 +23,7 @@ const TERRACE = {
   potArea: 0.049       // m² for en 25 cm potte (til liter-/ml-beregning)
 };
 
-const state = { place: null, data: null, day: 0, demo: false, viewHours: [], hourSel: -1 };
+const state = { place: null, data: null, day: 0, demo: false, viewHours: [], hourSel: -1, models: null };
 
 /* localStorage kan kaste i privat tilstand — huskefunktionen må aldrig vælte siden. */
 const store = {
@@ -131,6 +141,62 @@ function weatherUrl(p) {
     daily: "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,sunrise,sunset,sunshine_duration,et0_fao_evapotranspiration"
   });
   return `${API}?${q}`;
+}
+
+/* Modelsammenligningen hentes for sig: fejler den, mangler kun dette ét afsnit. */
+function modelsUrl(p) {
+  const q = new URLSearchParams({
+    latitude: p.lat, longitude: p.lon, timezone: "auto", forecast_days: 3, wind_speed_unit: "ms",
+    models: MODELS.map((m) => m.id).join(","),
+    hourly: "temperature_2m,precipitation"
+  });
+  return `${API}?${q}`;
+}
+
+async function loadModels(place) {
+  const res = await fetch(modelsUrl(place));
+  const js = await res.json().catch(() => null);
+  if (!res.ok || !js || js.error) throw new Error((js && js.reason) || `Open-Meteo svarede ${res.status}`);
+  if (!js.hourly || !js.hourly.time) throw new Error("Ufuldstændigt svar");
+  return js;
+}
+
+/* Med flere modeller suffikser Open-Meteo variabelnavnene (temperature_2m_dmi_seamless).
+   Med én model gør den ikke — så prøv begge. */
+function modelCol(H, base, id) {
+  const a = H[`${base}_${id}`];
+  if (Array.isArray(a)) return a;
+  const b = H[base];
+  return Array.isArray(b) ? b : [];
+}
+
+function shapeModels(raw, fromISO) {
+  const H = raw.hourly;
+  let start = H.time.indexOf(fromISO);
+  if (start < 0) start = H.time.findIndex((t) => t >= fromISO);
+  if (start < 0) start = 0;
+  const time = H.time.slice(start, start + MODEL_HOURS);
+  if (time.length < 6) throw new Error("For få timer i svaret");
+  const series = MODELS.map((m) => {
+    const temp = modelCol(H, "temperature_2m", m.id).slice(start, start + time.length);
+    const precip = modelCol(H, "precipitation", m.id).slice(start, start + time.length);
+    return { ...m, temp, precip, ok: temp.some((v) => typeof v === "number" && isFinite(v)) };
+  }).filter((m) => m.ok);
+  if (series.length < 2) throw new Error("Kun én model svarede");
+
+  /* Spænd og regn-enighed pr. time */
+  const hours = time.map((t, i) => {
+    const temps = series.map((m) => m.temp[i]).filter((v) => typeof v === "number" && isFinite(v));
+    const rain = series.filter((m) => num(m.precip[i]) >= RAIN_MM).length;
+    return {
+      t, hh: hhmm(t), key: dayKey(t),
+      min: temps.length ? Math.min(...temps) : 0,
+      max: temps.length ? Math.max(...temps) : 0,
+      spread: temps.length ? Math.max(...temps) - Math.min(...temps) : 0,
+      rain, rainAll: series.length
+    };
+  });
+  return { time, series, hours };
 }
 
 async function loadWeather(place) {
@@ -579,6 +645,162 @@ function renderPlants(d) {
   $("#plant-notes").innerHTML = notes.map(([cls, ic, txt]) => `<li class="${cls}">${ic}<span>${txt}</span></li>`).join("");
 }
 
+/* --- Modelsammenligning --- */
+
+/* Længste sammenhængende række timer hvor prædikatet holder. */
+function longestRun(hours, pred) {
+  let best = null, cur = null;
+  hours.forEach((h) => {
+    if (pred(h)) { cur = cur || { start: h, end: h, n: 0, items: [] }; cur.end = h; cur.n++; cur.items.push(h); }
+    else { if (cur && (!best || cur.n > best.n)) best = cur; cur = null; }
+  });
+  if (cur && (!best || cur.n > best.n)) best = cur;
+  return best;
+}
+
+function modelsVerdict(m) {
+  const first24 = m.hours.slice(0, 24);
+  const worst = first24.reduce((a, b) => (b.spread > a.spread ? b : a), first24[0]);
+  const avgSpread = first24.reduce((s, h) => s + h.spread, 0) / first24.length;
+
+  const tempPart = avgSpread < 1.2
+    ? `<b>Enige om temperaturen</b> — de ligger inden for ${fmt(avgSpread)}° af hinanden det næste døgn.`
+    : avgSpread < 2.5
+      ? `<b>Nogenlunde enige om temperaturen</b> — typisk ${fmt(avgSpread)}° fra hinanden, størst forskel kl. ${worst.hh} (${fmt(worst.spread)}°).`
+      : `<b>Uenige om temperaturen</b> — i gennemsnit ${fmt(avgSpread)}° fra hinanden, og kl. ${worst.hh} skiller ${fmt(worst.spread)}° dem.`;
+
+  const split = longestRun(first24, (h) => h.rain > 0 && h.rain < h.rainAll);
+  const allRain = longestRun(first24, (h) => h.rain === h.rainAll);
+  const anyRain = first24.some((h) => h.rain > 0);
+  const rainPart = !anyRain
+    ? "Alle modeller ser tørt vejr det næste døgn."
+    : allRain && (!split || allRain.n >= split.n)
+      ? `Alle er enige om regn kl. ${allRain.start.hh}–${allRain.end.hh}.`
+      : split
+        ? `Til gengæld er de <b>uenige om regn kl. ${split.start.hh}–${split.end.hh}</b>, hvor op til ${Math.max(...split.items.map((h) => h.rain))} af ${split.start.rainAll} modeller ser nedbør — hold øje med den periode.`
+        : "De er stort set enige om nedbøren.";
+  return `${tempPart} ${rainPart}`;
+}
+
+function renderModels() {
+  const m = state.models;
+  const status = $("#models-status"), body = $("#models-body");
+  if (!m) { status.hidden = false; body.hidden = true; return; }
+  status.hidden = true; body.hidden = false;
+
+  $("#models-verdict").innerHTML = modelsVerdict(m);
+  const narrowLegend = ($("#mchart-wrap").clientWidth || 900) < 560;
+  $("#models-legend").innerHTML = m.series.map((s) => {
+    const last = Math.round(num(s.temp[s.temp.length - 1]));
+    return `<span class="mlg"><i style="background:var(--s${s.slot})"></i>${esc(s.name)} ` +
+      (narrowLegend ? `<small>om 48 t: ${last}°</small>` : `<small>${esc(s.origin)}</small>`) + `</span>`;
+  }).join("");
+
+  /* Graf: spændfelt + én tynd linje pr. model + navn ved linjens ende.
+     Tegnes i containerens faktiske pixelbredde, så teksten ikke skaleres ned. */
+  const wrapW = $("#mchart-wrap").clientWidth || 900;
+  const narrow = wrapW < 560;
+  const W = Math.max(320, wrapW), H = narrow ? 168 : 190;
+  const padT = 14, padB = 26, padR = narrow ? 14 : 104, padL = 34;
+  const n = m.hours.length;
+  const vals = m.series.flatMap((s) => s.temp).filter((v) => typeof v === "number" && isFinite(v));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (hi - lo < 4) { const mid = (hi + lo) / 2; lo = mid - 2; hi = mid + 2; }
+  const padY = (hi - lo) * 0.12;
+  lo -= padY; hi += padY;
+  const x = (i) => padL + (i / (n - 1)) * (W - padL - padR);
+  const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+
+  const band = `<path class="mband" d="${
+    m.hours.map((h, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(h.max).toFixed(1)}`).join("")
+  }${
+    m.hours.slice().reverse().map((h, j) => `L${x(n - 1 - j).toFixed(1)},${y(h.min).toFixed(1)}`).join("")
+  }Z"/>`;
+
+  const lines = m.series.map((s) => `<path class="mline" style="stroke:var(--s${s.slot})" d="${
+    s.temp.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(num(v)).toFixed(1)}`).join("")
+  }"/>`).join("");
+
+  /* Direkte labels ved kurvens ende, skubbet fra hinanden så de ikke overlapper */
+  const ends = m.series.map((s) => ({ s, y: y(num(s.temp[n - 1])) })).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) {
+    if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
+  }
+  const labels = narrow ? "" : ends.map(({ s, y: ly }) =>
+    `<text class="mlabel" style="fill:var(--s${s.slot})" x="${(W - padR + 8).toFixed(1)}" y="${(ly + 4).toFixed(1)}">${esc(s.short)} ${Math.round(num(s.temp[n - 1]))}°</text>`).join("");
+
+  const ticks = [lo + (hi - lo) * 0.1, (lo + hi) / 2, hi - (hi - lo) * 0.1].map((v) =>
+    `<line class="mgrid" x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>` +
+    `<text class="maxis" x="${padL - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${Math.round(v)}°</text>`).join("");
+
+  const dayMarks = m.hours.map((h, i) => (h.hh === "00.00" && i > 0
+    ? `<line class="mday" x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${padT}" y2="${H - padB}"/>` +
+      `<text class="maxis" x="${(x(i) + 5).toFixed(1)}" y="${H - padB + 16}">${esc(dayName(h.key).slice(0, 3).toLowerCase())}</text>`
+    : "")).join("");
+  const xLabels = m.hours.map((h, i) => (i === 0
+    ? `<text class="maxis" x="${x(i).toFixed(1)}" y="${H - padB + 16}">nu</text>` : "")).join("");
+
+  $("#mchart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="Temperatur de næste ${n} timer ifølge ${m.series.length} vejrmodeller">
+      ${ticks}${dayMarks}${band}${lines}${labels}${xLabels}
+      <line class="mcross" id="mcross" x1="0" x2="0" y1="${padT}" y2="${H - padB}" style="display:none"/>
+    </svg>`;
+  bindCrosshair(x, padL, W, padR);
+  $("#mchart-cap").textContent = `Temperatur de næste ${n} timer. Det tonede felt er spændet mellem den koldeste og varmeste model.` + (narrow ? " Tryk i grafen for at læse en time." : "");
+
+  /* Regn-enighed: én celle pr. time, mørkere jo flere modeller der ser regn */
+  $("#rainstrip").innerHTML = `<div class="rstrip">${m.hours.map((h) => {
+    const f = h.rain / h.rainAll;
+    return `<span class="rcell" title="kl. ${h.hh}: ${h.rain} af ${h.rainAll} modeller ser regn"
+      style="background:${f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`}"></span>`;
+  }).join("")}</div>
+  <div class="rlabels"><span>nu</span><span>+24 t</span><span>+48 t</span></div>`;
+  $("#rainscale").innerHTML = [0, 1, 2, 3, 4].filter((k) => k <= m.series.length).map((k) => {
+    const f = k / m.series.length;
+    return `<span class="rkey"><i style="background:${f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`}"></i>${k}</span>`;
+  }).join("") + `<span class="rkey-txt">modeller ser regn i timen</span>`;
+
+  /* Tabelvisning — samme tal, uden farvekodning */
+  const sum = (a) => a.reduce((x, v) => x + num(v), 0);
+  $("#mtable").innerHTML = `
+    <thead><tr><th>Model</th><th>Nu</th><th>Laveste</th><th>Højeste</th><th>Nedbør ${MODEL_HOURS} t</th></tr></thead>
+    <tbody>${m.series.map((s) => {
+      const t = s.temp.filter((v) => typeof v === "number" && isFinite(v));
+      return `<tr>
+        <th scope="row"><i class="tdot" style="background:var(--s${s.slot})"></i>${esc(s.name)} <small>${esc(s.origin)}</small></th>
+        <td>${Math.round(num(s.temp[0]))}°</td>
+        <td>${Math.round(Math.min(...t))}°</td>
+        <td>${Math.round(Math.max(...t))}°</td>
+        <td>${fmt(sum(s.precip))} mm</td>
+      </tr>`;
+    }).join("")}</tbody>`;
+}
+
+/* Sigtelinje: virker med både mus og finger, og læser alle modeller på én gang. */
+function bindCrosshair(x, padL, W, padR) {
+  const wrap = $("#mchart-wrap"), tip = $("#mtip"), cross = $("#mcross");
+  const m = state.models;
+  const n = m.hours.length;
+  const move = (ev) => {
+    const r = wrap.getBoundingClientRect();
+    const px = ((ev.clientX - r.left) / r.width) * W;
+    const i = clamp(Math.round(((px - padL) / (W - padL - padR)) * (n - 1)), 0, n - 1);
+    const h = m.hours[i];
+    cross.style.display = "";
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i));
+    tip.innerHTML = `<b>${dayName(h.key)} kl. ${h.hh}</b>` +
+      m.series.map((s) => `<span><i style="background:var(--s${s.slot})"></i>${esc(s.short)}<em>${fmt(num(s.temp[i]))}°</em></span>`).join("") +
+      `<span class="tip-rain">${h.rain} af ${h.rainAll} ser regn</span>`;
+    tip.hidden = false;
+    const left = clamp((x(i) / W) * r.width - 70, 4, Math.max(4, r.width - 148));
+    tip.style.left = `${left}px`;
+  };
+  const leave = () => { tip.hidden = true; cross.style.display = "none"; };
+  wrap.addEventListener("pointermove", move);
+  wrap.addEventListener("pointerdown", move);
+  wrap.addEventListener("pointerleave", leave);
+}
+
 function renderDrive(d) {
   const next = d.hours.slice(d.nowIndex, d.nowIndex + 24);
   const scored = next.map((h) => ({ h, s: driveScore(h, d.days.find((x) => x.key === h.key)) }));
@@ -637,6 +859,7 @@ function renderAll() {
   renderPlan(d);
   renderWeek(d);
   renderPlants(d);
+  renderModels();
   renderDrive(d);
   selectDay(0);
   const p = state.place;
@@ -672,9 +895,31 @@ async function load(place) {
   if (seq !== loadSeq) return; // et nyere kald er i gang eller færdigt
   state.data = data;
   state.demo = demo;
+  state.models = null;
   banner(demo ? `Kunne ikke hente live data (${err.message}) — viser demo-data, så du kan se dashboardet.` : null, demo);
   renderAll();
   $("#refresh-btn").classList.remove("spin");
+  loadModelsInto(place, seq, data.hours[data.nowIndex].t, demo);
+}
+
+/* Modelafsnittet hentes efter hovedvisningen — siden må ikke vente på det. */
+async function loadModelsInto(place, seq, fromISO, demo) {
+  const fail = (msg) => {
+    if (seq !== loadSeq) return;
+    state.models = null;
+    $("#models-body").hidden = true;
+    const el = $("#models-status");
+    el.hidden = false;
+    el.textContent = msg;
+  };
+  try {
+    const raw = demo ? demoModels(place, fromISO) : await loadModels(place);
+    if (seq !== loadSeq) return;
+    state.models = shapeModels(raw, fromISO);
+    renderModels();
+  } catch (e) {
+    fail(`Kunne ikke hente modelsammenligningen (${e.message}). Resten af siden er upåvirket.`);
+  }
 }
 
 /* Bysøgning */
@@ -809,6 +1054,33 @@ function demoData(place) {
     hourly, daily, _place: place
   };
 }
+
+/* Fire syntetiske modelvarianter, så afsnittet kan ses uden netværk. */
+function demoModels(place, fromISO) {
+  const base = demoData(place);
+  const H = { time: base.hourly.time };
+  MODELS.forEach((m, k) => {
+    const phase = (k + 1) * 1.7, amp = 0.6 + k * 0.5, bias = (k - 1.5) * 0.7;
+    H[`temperature_2m_${m.id}`] = base.hourly.temperature_2m.map((v, i) =>
+      r1(v + bias + Math.sin(i / 7 + phase) * amp));
+    H[`precipitation_${m.id}`] = base.hourly.precipitation.map((v, i) => {
+      const wobble = Math.sin(i / 5 + phase * 2);
+      if (v > 0) return r1(Math.max(0, v * (1 + wobble * 0.6)));
+      return wobble > 0.86 - k * 0.12 ? r1(0.3 + k * 0.15) : 0;   // hver model ser en byge de andre ikke ser
+    });
+  });
+  return { hourly: H };
+}
+
+/* Grafen tegnes i pixels, så den skal gentegnes når bredden ændrer sig. */
+let resizeTimer, lastW = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const w = $("#mchart-wrap").clientWidth || 0;
+    if (state.models && Math.abs(w - lastW) > 24) { lastW = w; renderModels(); }
+  }, 160);
+});
 
 /* ---------- start ---------- */
 (function init() {
