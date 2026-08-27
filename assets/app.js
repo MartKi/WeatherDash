@@ -777,6 +777,12 @@ function renderAir() {
   const tiles = [];
   if (a.aqi !== null) {
     const b = aqiBand(a.aqi);
+    const worstPollen = a.pollen.reduce((w, sp) =>
+      (!w || pollenLevel(sp.now || 0, sp.steps) > pollenLevel(w.now || 0, w.steps) ? sp : w), null);
+    const wl = worstPollen ? pollenLevel(worstPollen.now || 0, worstPollen.steps) : 0;
+    setChip("#chip-air",
+      `${b.name}${wl >= 2 ? ` · ${worstPollen.name.toLowerCase()} ${POLLEN_BANDS[wl].toLowerCase()}` : ""}`,
+      b.tone <= 2 && wl < 3 ? "g" : b.tone >= 4 || wl >= 4 ? "b" : "o");
     tiles.push(`<div class="stat aq-hero aq-t${b.tone}">
       <div class="k">Luftkvalitet nu</div>
       <div class="v">${Math.round(a.aqi)} <span class="aq-band">${b.name}</span></div>
@@ -869,6 +875,13 @@ function renderModels() {
   status.hidden = true; body.hidden = false;
 
   $("#models-verdict").innerHTML = modelsVerdict(m);
+
+  const first24 = m.hours.slice(0, 24);
+  const avgSpread = first24.reduce((x, h) => x + h.spread, 0) / first24.length;
+  const split = first24.some((h) => h.rain > 0 && h.rain < h.rainAll);
+  setChip("#chip-models",
+    split ? `Uenige om regn · ±${fmt(avgSpread)}°` : `${avgSpread < 1.2 ? "Enige" : avgSpread < 2.5 ? "Nogenlunde enige" : "Uenige"} · ±${fmt(avgSpread)}°`,
+    avgSpread < 1.2 && !split ? "g" : avgSpread < 2.5 ? "o" : "b");
   $("#models-legend").innerHTML = m.series.map((s) =>
     `<span class="mlg"><i style="background:var(--s${s.slot})"></i>${esc(s.name)} <small>${esc(s.origin)}</small></span>`).join("");
 
@@ -1038,6 +1051,12 @@ function renderDrive(d) {
   });
 
   $("#drive-windows").innerHTML = bar + rows.join("");
+
+  const bad = scored.filter((x) => x.s < 4.5).length;
+  const care = scored.filter((x) => x.s >= 4.5 && x.s < 6.8).length;
+  setChip("#chip-drive",
+    bad ? `${bad} ${bad === 1 ? "time" : "timer"} at undgå` : care ? `${care} ${care === 1 ? "time" : "timer"} kræver omtanke` : "Ingen kritiske perioder",
+    bad ? "b" : care ? "o" : "g");
 }
 
 /* ---------- interaktion ---------- */
@@ -1065,6 +1084,16 @@ function renderAll() {
   $("#place-line").textContent = [p.name, p.region, p.country].filter(Boolean).join(", ");
   $("#foot-meta").textContent = `${p.name} · ${p.lat.toFixed(3).replace(".", ",")}°, ${p.lon.toFixed(3).replace(".", ",")}° · tidszone ${d.tz}${state.demo ? " · demo-data" : ""}`;
   document.title = `${Math.round(d.now.temp)}° ${p.name} — Vejr & planlægning`;
+}
+
+/* Foldede sektioner viser deres konklusion i overskriften, så intet er skjult —
+   kun sammenfattet. Chippen vises kun når sektionen er lukket (styret i CSS). */
+function setChip(id, text, tone) {
+  const el = $(id);
+  if (!el) return;
+  el.className = "sh-chip" + (tone ? ` ${tone}` : "");
+  el.textContent = text || "";
+  el.hidden = !text;
 }
 
 function banner(msg, isError) {
@@ -1317,6 +1346,22 @@ function demoModels(place, fromISO) {
   return { hourly: H };
 }
 
+/* Foldetilstanden huskes pr. sektion, så dashboardet åbner som du forlod det. */
+function initSections() {
+  let saved = {};
+  try { saved = JSON.parse(store.get("wd.open") || "{}") || {}; } catch { /* ignorer */ }
+  document.querySelectorAll("details.section").forEach((d) => {
+    if (typeof saved[d.id] === "boolean") d.open = saved[d.id];
+    d.addEventListener("toggle", () => {
+      const map = {};
+      document.querySelectorAll("details.section").forEach((x) => { map[x.id] = x.open; });
+      store.set("wd.open", JSON.stringify(map));
+      /* Modelgrafen måler sin egen bredde — den er 0 mens sektionen er lukket. */
+      if (d.id === "sec-models" && d.open && state.models) renderModels();
+    });
+  });
+}
+
 /* Grafen tegnes i pixels, så den skal gentegnes når bredden ændrer sig. */
 let resizeTimer, lastW = 0;
 window.addEventListener("resize", () => {
@@ -1329,6 +1374,7 @@ window.addEventListener("resize", () => {
 
 /* ---------- start ---------- */
 (function init() {
+  initSections();
   const savedTheme = store.get("wd.theme");
   if (savedTheme) document.documentElement.dataset.theme = savedTheme;
   let place = DEFAULT_PLACE;
