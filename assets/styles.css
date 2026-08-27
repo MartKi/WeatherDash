@@ -201,24 +201,20 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .lg { display: inline-flex; align-items: center; gap: 6px; }
 .lg::before { content: ""; width: 12px; height: 3px; border-radius: 2px; background: currentColor; }
 .lg-temp::before { background: var(--warm); }
-.lg-feels::before { background: var(--text-3); }
-.lg-precip::before { background: var(--rain); height: 9px; width: 7px; border-radius: 2px; }
-.lg-prob::before { background: color-mix(in srgb, var(--rain) 30%, transparent); height: 9px; width: 7px; border-radius: 2px; }
-.lg-night::before { background: color-mix(in srgb, var(--text-3) 30%, transparent); height: 9px; width: 12px; }
-.chart-scroll { overflow-x: auto; overflow-y: hidden; padding: 0 18px; scrollbar-width: thin; }
-.chart-scroll svg { display: block; overflow: visible; }
-.chart-scroll .grid { stroke: var(--line-soft); stroke-width: 1; }
-#chart rect, #chart path { stroke: none; }
-.chart-scroll .night { fill: color-mix(in srgb, var(--text-3) 12%, transparent); }
-.chart-scroll .templine { stroke: var(--warm); stroke-width: 2.4; fill: none; }
-.chart-scroll .feelsline { stroke: var(--text-3); stroke-width: 1.6; stroke-dasharray: 3 4; fill: none; }
-.chart-scroll .tempfill { fill: color-mix(in srgb, var(--warm) 14%, transparent); stroke: none; }
-.chart-scroll .pbar { fill: var(--rain); stroke: none; opacity: .8; }
-.chart-scroll .pprob { fill: var(--rain); stroke: none; opacity: .22; }
-.chart-scroll text { fill: var(--text-2); stroke: none; font-size: 11px; }
-.chart-scroll text.val { fill: var(--text); font-size: 11.5px; font-weight: 600; }
-.hours-scroll { padding-top: 4px; padding-bottom: 8px; }
-.hours { display: flex; }
+.lg-precip::before { background: var(--rain); height: 9px; width: 7px; border-radius: 3px; }
+.lg-night::before { background: color-mix(in srgb, var(--text-3) 22%, transparent); height: 9px; width: 12px; border-radius: 3px; }
+.chart-scroll { overflow-x: auto; overflow-y: hidden; padding: 0 18px 8px; scrollbar-width: thin; }
+.chart-stack { width: max-content; min-width: 100%; }
+#chart svg { display: block; overflow: visible; }
+#chart .night { fill: color-mix(in srgb, var(--text-3) 9%, transparent); stroke: none; }
+#chart .grid { stroke: var(--line-soft); stroke-width: 1; }
+#chart .templine { stroke: var(--warm); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+#chart .pbar { fill: var(--rain); stroke: none; opacity: .85; }
+#chart text { fill: var(--text-2); stroke: none; font-size: 11px; }
+#chart text.val { fill: var(--text); font-size: 11.5px; font-weight: 650; }
+#chart text.pval { fill: var(--rain); font-size: 10.5px; font-weight: 600; }
+#chart .vdot { fill: var(--warm); stroke: var(--surface); stroke-width: 1.5; }
+.hours { display: flex; padding-top: 2px; }
 .hour {
   width: 62px; flex: none; text-align: center; padding: 8px 2px; border-radius: 10px;
   display: grid; gap: 3px; justify-items: center;
@@ -275,6 +271,10 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 #mchart text { stroke: none; font-size: 12px; }
 #mchart .maxis { fill: var(--text-3); }
 #mchart .mlabel { font-size: 12.5px; font-weight: 600; }
+#mchart .mspread { stroke: var(--text-2); stroke-width: 1.2; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
+#mchart .mspread-dot { fill: var(--text-2); stroke: none; }
+#mchart .mspread-txt { fill: var(--text); font-size: 12px; font-weight: 650; }
+#mchart .mdaylab { fill: var(--text-2); font-size: 12px; font-weight: 550; }
 .mchart-figure figcaption { margin-top: 8px; color: var(--text-2); font-size: 12.5px; }
 
 .mtip {
@@ -288,11 +288,6 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .mtip em { margin-left: auto; font-style: normal; font-weight: 600; color: var(--text); }
 .mtip .tip-rain { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line-soft); color: var(--rain); }
 
-.rainstrip-block { display: grid; gap: 8px; }
-.mini-h { font-size: 13px; font-weight: 600; }
-.rstrip { display: flex; gap: 2px; }
-.rcell { flex: 1; min-width: 0; height: 22px; border-radius: 3px; }
-.rlabels { display: flex; justify-content: space-between; color: var(--text-3); font-size: 11.5px; }
 .rainscale { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-2); }
 .rkey { display: inline-flex; align-items: center; gap: 5px; }
 .rkey i { width: 14px; height: 10px; border-radius: 3px; display: inline-block; }

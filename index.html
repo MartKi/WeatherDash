@@ -79,13 +79,15 @@
     <div class="card chart-card">
       <div class="chart-legend">
         <span class="lg lg-temp">Temperatur</span>
-        <span class="lg lg-feels">Føles som</span>
         <span class="lg lg-precip">Nedbør (mm)</span>
-        <span class="lg lg-prob">Regnrisiko (%)</span>
         <span class="lg lg-night">Nat</span>
       </div>
-      <div class="chart-scroll" id="chart-scroll"><div id="chart"></div></div>
-      <div class="chart-scroll hours-scroll" id="hours-scroll"><div class="hours" id="hours"></div></div>
+      <div class="chart-scroll" id="chart-scroll">
+        <div class="chart-stack">
+          <div id="chart"></div>
+          <div class="hours" id="hours"></div>
+        </div>
+      </div>
       <div class="hour-detail" id="hour-detail" hidden></div>
     </div>
   </section>
@@ -106,13 +108,9 @@
             <div id="mchart"></div>
             <div class="mtip" id="mtip" hidden></div>
           </div>
-          <figcaption id="mchart-cap">Temperatur de næste 48 timer. Det tonede felt er spændet mellem den koldeste og varmeste model.</figcaption>
+          <figcaption id="mchart-cap">Øverst temperaturen pr. model — det tonede felt er spændet mellem koldeste og varmeste. Rækken nedenunder viser, hvor mange modeller der ser regn i timen.</figcaption>
         </figure>
-        <div class="rainstrip-block">
-          <h3 class="mini-h">Hvor mange modeller ser regn?</h3>
-          <div id="rainstrip"></div>
-          <div class="rainscale" id="rainscale"></div>
-        </div>
+        <div class="rainscale" id="rainscale"></div>
         <details class="mtable-details">
           <summary>Vis tallene som tabel</summary>
           <div class="mtable-scroll"><table class="mtable" id="mtable"></table></div>
