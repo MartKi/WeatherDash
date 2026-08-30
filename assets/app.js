@@ -4,6 +4,7 @@
 const API = "https://api.open-meteo.com/v1/forecast";
 const GEO = "https://geocoding-api.open-meteo.com/v1/search";
 const AIR = "https://air-quality-api.open-meteo.com/v1/air-quality";
+const ENS = "https://ensemble-api.open-meteo.com/v1/ensemble";
 
 const DEFAULT_PLACE = { name: "København", region: "Hovedstaden", country: "Danmark", lat: 55.6761, lon: 12.5683 };
 
@@ -39,6 +40,7 @@ const AQI_BANDS = [
 const aqiBand = (v) => AQI_BANDS.find((b) => v <= b.max) || AQI_BANDS[AQI_BANDS.length - 1];
 const pollenLevel = (v, steps) => steps.filter((t) => v >= t).length;
 const RAIN_MM = 0.2;      // hvornår en model "ser regn" i en time
+const ENS_MODEL = "ecmwf_ifs025";   // ECMWF's ensemble: ~51 perturberede kørsler
 
 /* Antagelser for terrassen — juster her hvis din terrasse er anderledes. */
 const TERRACE = {
@@ -252,6 +254,50 @@ function modelsUrl(p) {
     hourly: "temperature_2m,precipitation"
   });
   return `${API}?${q}`;
+}
+
+/* ECMWF's ensemble: samme model kørt ~51 gange med små forstyrrelser i starttilstanden.
+   Det giver en ægte sandsynlighed, hvor fire forskellige centres bud kun giver en
+   fornemmelse af strukturel uenighed. */
+function ensUrl(p) {
+  const q = new URLSearchParams({
+    latitude: p.lat, longitude: p.lon, timezone: "auto", forecast_days: 3,
+    models: ENS_MODEL, hourly: "temperature_2m,precipitation"
+  });
+  return `${ENS}?${q}`;
+}
+
+async function loadEnsemble(place) {
+  const res = await fetch(ensUrl(place));
+  const js = await res.json().catch(() => null);
+  if (!res.ok || !js || js.error || !js.hourly) throw new Error((js && js.reason) || `Ensemble-API'et svarede ${res.status}`);
+  return js;
+}
+
+/* Medlemmerne kommer som temperature_2m_member01, _member02 … plus kontrolkørslen
+   uden suffiks. Nøglerne læses ud af svaret frem for at gætte antallet. */
+function memberCols(H, base) {
+  const re = new RegExp(`^${base}(_member\\d+)?$`);
+  return Object.keys(H).filter((k) => re.test(k) && Array.isArray(H[k])).map((k) => H[k]);
+}
+const percentile = (sorted, p) => sorted[clamp(Math.round(p * (sorted.length - 1)), 0, sorted.length - 1)];
+
+function shapeEnsemble(raw, times) {
+  const H = raw.hourly;
+  const temps = memberCols(H, "temperature_2m");
+  const precs = memberCols(H, "precipitation");
+  if (temps.length < 5) throw new Error("for få medlemmer i svaret");
+  return {
+    members: temps.length,
+    rows: times.map((t) => {
+      const j = H.time.indexOf(t);
+      if (j < 0) return null;
+      const vals = temps.map((c) => c[j]).filter((v) => typeof v === "number" && isFinite(v)).sort((a, b) => a - b);
+      if (!vals.length) return null;
+      const wet = precs.length ? precs.filter((c) => num(c[j]) >= RAIN_MM).length / precs.length : null;
+      return { p10: percentile(vals, 0.1), p50: percentile(vals, 0.5), p90: percentile(vals, 0.9), prob: wet };
+    })
+  };
 }
 
 async function loadModels(place) {
@@ -890,6 +936,12 @@ function renderAir() {
 
 /* --- Modelsammenligning --- */
 
+/* Båndets kanter og regnsandsynligheden: ensemblet når det er hentet, ellers de fire modeller. */
+const bandLo = (m, h) => (m.ens && h.p10 !== undefined ? h.p10 : h.min);
+const bandHi = (m, h) => (m.ens && h.p90 !== undefined ? h.p90 : h.max);
+const bandSpan = (m, h) => bandHi(m, h) - bandLo(m, h);
+const rainFrac = (m, h) => (m.ens && h.prob !== undefined && h.prob !== null ? h.prob : h.rain / h.rainAll);
+
 /* Længste sammenhængende række timer hvor prædikatet holder. */
 function longestRun(hours, pred) {
   let best = null, cur = null;
@@ -903,14 +955,36 @@ function longestRun(hours, pred) {
 
 function modelsVerdict(m) {
   const first24 = m.hours.slice(0, 24);
-  const worst = first24.reduce((a, b) => (b.spread > a.spread ? b : a), first24[0]);
-  const avgSpread = first24.reduce((s, h) => s + h.spread, 0) / first24.length;
+  const worst = first24.reduce((a, b) => (bandSpan(m, b) > bandSpan(m, a) ? b : a), first24[0]);
+  const avgSpread = first24.reduce((x, h) => x + bandSpan(m, h), 0) / first24.length;
+
+  if (m.ens) {
+    /* p10–p90 er 80 % af medlemmerne, så spændet kan læses som et sikkerhedsinterval.
+       Usikkerheden vokser med tiden, så det andet døgn siges for sig. */
+    const later = m.hours.slice(24);
+    const avgLater = later.length ? later.reduce((x, h) => x + bandSpan(m, h), 0) / later.length : null;
+    const grows = avgLater !== null ? ` og ${fmt(avgLater)}° i det efterfølgende døgn` : "";
+    const tempPart = avgSpread < 2
+      ? `<b>Sikker temperaturprognose</b> — 80 % af de ${m.ens.members} ensemble-kørsler ligger inden for ${fmt(avgSpread)}° af hinanden det næste døgn${grows}.`
+      : avgSpread < 4
+        ? `<b>Nogenlunde sikker temperaturprognose</b> — 80 % af de ${m.ens.members} kørsler spænder ${fmt(avgSpread)}° det næste døgn${grows}.`
+        : `<b>Usikker temperaturprognose</b> — 80 % af de ${m.ens.members} kørsler spænder ${fmt(avgSpread)}° allerede det næste døgn${grows}.`;
+
+    const peak = first24.reduce((a, b) => (rainFrac(m, b) > rainFrac(m, a) ? b : a), first24[0]);
+    const pk = Math.round(rainFrac(m, peak) * 100);
+    const rainPart = pk < 10
+      ? "Stort set ingen kørsler ser regn det næste døgn."
+      : pk >= 80
+        ? `Regn er nærmest sikker omkring kl. ${peak.hh} — ${pk} % af kørslerne har nedbør.`
+        : `Regnrisikoen topper på <b>${pk} % kl. ${peak.hh}</b>.`;
+    return `${tempPart} ${rainPart}`;
+  }
 
   const tempPart = avgSpread < 1.2
     ? `<b>Enige om temperaturen</b> — de ligger inden for ${fmt(avgSpread)}° af hinanden det næste døgn.`
     : avgSpread < 2.5
-      ? `<b>Nogenlunde enige om temperaturen</b> — typisk ${fmt(avgSpread)}° fra hinanden, størst forskel kl. ${worst.hh} (${fmt(worst.spread)}°).`
-      : `<b>Uenige om temperaturen</b> — i gennemsnit ${fmt(avgSpread)}° fra hinanden, og kl. ${worst.hh} skiller ${fmt(worst.spread)}° dem.`;
+      ? `<b>Nogenlunde enige om temperaturen</b> — typisk ${fmt(avgSpread)}° fra hinanden, størst forskel kl. ${worst.hh} (${fmt(bandSpan(m, worst))}°).`
+      : `<b>Uenige om temperaturen</b> — i gennemsnit ${fmt(avgSpread)}° fra hinanden, og kl. ${worst.hh} skiller ${fmt(bandSpan(m, worst))}° dem.`;
 
   const split = longestRun(first24, (h) => h.rain > 0 && h.rain < h.rainAll);
   const allRain = longestRun(first24, (h) => h.rain === h.rainAll);
@@ -934,13 +1008,21 @@ function renderModels() {
   $("#models-verdict").innerHTML = modelsVerdict(m);
 
   const first24 = m.hours.slice(0, 24);
-  const avgSpread = first24.reduce((x, h) => x + h.spread, 0) / first24.length;
-  const split = first24.some((h) => h.rain > 0 && h.rain < h.rainAll);
-  setChip("#chip-models",
-    split ? `Uenige om regn · ±${fmt(avgSpread)}°` : `${avgSpread < 1.2 ? "Enige" : avgSpread < 2.5 ? "Nogenlunde enige" : "Uenige"} · ±${fmt(avgSpread)}°`,
-    avgSpread < 1.2 && !split ? "g" : avgSpread < 2.5 ? "o" : "b");
+  const avgSpread = first24.reduce((x, h) => x + bandSpan(m, h), 0) / first24.length;
+  if (m.ens) {
+    const pk = Math.round(Math.max(...first24.map((h) => rainFrac(m, h))) * 100);
+    setChip("#chip-models",
+      `${pk >= 10 ? `Regn op til ${pk} %` : "Tørt"} · ±${fmt(avgSpread)}°`,
+      avgSpread < 2 && pk < 40 ? "g" : avgSpread < 4 && pk < 70 ? "o" : "b");
+  } else {
+    const split = first24.some((h) => h.rain > 0 && h.rain < h.rainAll);
+    setChip("#chip-models",
+      split ? `Uenige om regn · ±${fmt(avgSpread)}°` : `${avgSpread < 1.2 ? "Enige" : avgSpread < 2.5 ? "Nogenlunde enige" : "Uenige"} · ±${fmt(avgSpread)}°`,
+      avgSpread < 1.2 && !split ? "g" : avgSpread < 2.5 ? "o" : "b");
+  }
   $("#models-legend").innerHTML = m.series.map((s) =>
-    `<span class="mlg"><i style="background:var(--s${s.slot})"></i>${esc(s.name)} <small>${esc(s.origin)}</small></span>`).join("");
+    `<span class="mlg"><i style="background:var(--s${s.slot})"></i>${esc(s.name)} <small>${esc(s.origin)}</small></span>`).join("")
+    + (m.ens ? `<span class="mlg"><i class="lg-band"></i>ECMWF-ensemble <small>${m.ens.members} kørsler, 80 %</small></span>` : "");
 
   /* Én samlet figur: temperatur øverst, regn-enighed som række nedenunder,
      fælles tidsakse og fælles sigtelinje. Tegnes i containerens pixelbredde. */
@@ -954,7 +1036,8 @@ function renderModels() {
   const H = rainY + rainH + 30;              // plads til dagslabels nederst
   const n = m.hours.length;
 
-  const vals = m.series.flatMap((s) => s.temp).filter((v) => typeof v === "number" && isFinite(v));
+  const vals = m.series.flatMap((s) => s.temp).filter((v) => typeof v === "number" && isFinite(v))
+    .concat(m.hours.flatMap((h) => [bandLo(m, h), bandHi(m, h)]).filter((v) => typeof v === "number" && isFinite(v)));
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (hi - lo < 4) { const mid = (hi + lo) / 2; lo = mid - 2; hi = mid + 2; }
   const padY = (hi - lo) * 0.14;
@@ -963,14 +1046,16 @@ function renderModels() {
   const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * plotH;
 
   /* Spændfeltet: glat overkant (varmeste) og glat underkant (koldeste) */
-  const topPts = m.hours.map((h, i) => [x(i), y(h.max)]);
-  const botPts = m.hours.map((h, i) => [x(i), y(h.min)]).reverse();
+  const topPts = m.hours.map((h, i) => [x(i), y(bandHi(m, h))]);
+  const botPts = m.hours.map((h, i) => [x(i), y(bandLo(m, h))]).reverse();
   const band = `<path class="mband" d="${smoothPath(topPts)}L${botPts[0][0].toFixed(1)},${botPts[0][1].toFixed(1)}${smoothPath(botPts).slice(smoothPath(botPts).indexOf("C"))}Z"/>`;
 
   const lines = m.series.map((s) => `<path class="mline" style="stroke:var(--s${s.slot})" d="${
     smoothPath(s.temp.map((v, i) => [x(i), y(num(v))]))}"/>`).join("");
 
   /* Markér timen med størst uenighed: lodret spænd med gradtal */
+  /* Markøren viser hvor de fire centre er mest uenige — ikke ensemblets spredning,
+     som pr. definition vokser med tiden og derfor altid ville udpege sidste time. */
   const iw = m.hours.reduce((a, h, i) => (h.spread > m.hours[a].spread ? i : a), 0);
   const wh = m.hours[iw];
   const spreadMark = wh.spread >= 1.5 ? `
@@ -995,11 +1080,13 @@ function renderModels() {
   /* Regn-enighed inde i samme figur, med egen rækkelabel */
   const cellW = (W - padL - padR) / n;
   const rain = m.hours.map((h, i) => {
-    const f = h.rain / h.rainAll;
+    const f = rainFrac(m, h);
     const fill = f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`;
     return `<rect x="${(padL + i * cellW).toFixed(1)}" y="${rainY}" width="${Math.max(cellW - 1.5, 1).toFixed(1)}" height="${rainH}" rx="2.5" style="fill:${fill}" stroke="none"/>`;
   }).join("");
   const rainLabel = `<text class="maxis" x="${padL - 8}" y="${rainY + rainH - 3}" text-anchor="end">Regn</text>`;
+  const rainTitles = m.hours.map((h, i) =>
+    `<rect x="${(padL + i * cellW).toFixed(1)}" y="${rainY}" width="${Math.max(cellW - 1.5, 1).toFixed(1)}" height="${rainH}" fill="transparent" stroke="none"><title>kl. ${h.hh}: ${m.ens ? `${Math.round(rainFrac(m, h) * 100)} % af kørslerne` : `${h.rain} af ${h.rainAll} modeller`} ser regn</title></rect>`).join("");
 
   /* Dage: adskillere gennem begge felter og navnet centreret i sit døgn */
   const bounds = [0];
@@ -1017,16 +1104,20 @@ function renderModels() {
 
   $("#mchart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
       aria-label="Temperatur og regn-enighed de næste ${n} timer ifølge ${m.series.length} vejrmodeller">
-      ${ticks}${seps}${band}${lines}${spreadMark}${labels}${rain}${rainLabel}${dayLabs}
+      ${ticks}${seps}${band}${lines}${spreadMark}${labels}${rain}${rainTitles}${rainLabel}${dayLabs}
       <line class="mcross" id="mcross" x1="0" x2="0" y1="${padT}" y2="${rainY + rainH}" style="display:none"/>
     </svg>`;
   bindCrosshair(x, padL, W, padR);
-  $("#mchart-cap").textContent = "Øverst temperaturen pr. model — det tonede felt er spændet mellem koldeste og varmeste, og markeringen viser timen med størst uenighed. Rækken Regn viser, hvor mange modeller der ser nedbør i timen." + (narrow ? " Tryk i grafen for at læse en time." : "");
+  $("#mchart-cap").textContent = (m.ens
+    ? `Linjerne er fire nationale modellers bud, og markeringen viser timen, hvor de er mest uenige. Det tonede felt er ECMWF's ensemble: 80 % af de ${m.ens.members} kørsler ligger derinde, og feltet breder sig, jo længere frem prognosen rækker. Rækken Regn viser, hvor stor en del af kørslerne der har nedbør i timen.`
+    : "Øverst temperaturen pr. model — det tonede felt er spændet mellem koldeste og varmeste, og markeringen viser timen med størst uenighed. Rækken Regn viser, hvor mange modeller der ser nedbør i timen.")
+    + (narrow ? " Tryk i grafen for at læse en time." : "");
 
-  $("#rainscale").innerHTML = [0, 1, 2, 3, 4].filter((k) => k <= m.series.length).map((k) => {
-    const f = k / m.series.length;
-    return `<span class="rkey"><i style="background:${f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`}"></i>${k}</span>`;
-  }).join("") + `<span class="rkey-txt">modeller ser regn i timen</span>`;
+  const scale = m.ens ? [0, 0.25, 0.5, 0.75, 1] : [0, 1, 2, 3, 4].filter((k) => k <= m.series.length).map((k) => k / m.series.length);
+  $("#rainscale").innerHTML = scale.map((f) =>
+    `<span class="rkey"><i style="background:${f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`}"></i>${
+      m.ens ? `${Math.round(f * 100)} %` : Math.round(f * m.series.length)}</span>`).join("")
+    + `<span class="rkey-txt">${m.ens ? "af ensemble-kørslerne har nedbør i timen" : "modeller ser regn i timen"}</span>`;
 
   /* Tabelvisning — samme tal, uden farvekodning */
   const sum = (a) => a.reduce((x2, v) => x2 + num(v), 0);
@@ -1058,7 +1149,9 @@ function bindCrosshair(x, padL, W, padR) {
     cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i));
     tip.innerHTML = `<b>${dayName(h.key)} kl. ${h.hh}</b>` +
       m.series.map((s) => `<span><i style="background:var(--s${s.slot})"></i>${esc(s.short)}<em>${fmt(num(s.temp[i]))}°</em></span>`).join("") +
-      `<span class="tip-rain">${h.rain} af ${h.rainAll} ser regn</span>`;
+      (m.ens
+        ? `<span class="tip-rain">${Math.round(rainFrac(m, h) * 100)} % risiko · ${Math.round(h.p10)}–${Math.round(h.p90)}°</span>`
+        : `<span class="tip-rain">${h.rain} af ${h.rainAll} ser regn</span>`);
     tip.hidden = false;
     const left = clamp((x(i) / W) * r.width - 70, 4, Math.max(4, r.width - 148));
     tip.style.left = `${left}px`;
@@ -1140,7 +1233,7 @@ function renderAll() {
   const p = state.place;
   $("#place-line").textContent = [p.name, p.region, p.country].filter(Boolean).join(", ");
   $("#foot-meta").textContent = `${p.name} · ${p.lat.toFixed(3).replace(".", ",")}°, ${p.lon.toFixed(3).replace(".", ",")}° · tidszone ${d.tz}${state.demo ? " · demo-data" : ""}`;
-  document.title = `${Math.round(d.now.temp)}° ${p.name} — Vejr & planlægning`;
+  document.title = `${Math.round(d.now.temp)}° ${p.name} — Vejrplanlægning`;
 }
 
 /* Foldede sektioner viser deres konklusion i overskriften, så intet er skjult —
@@ -1210,6 +1303,23 @@ async function loadAirInto(place, seq, fromISO, demo) {
 }
 
 /* Modelafsnittet hentes efter hovedvisningen — siden må ikke vente på det. */
+/* Ensemblet lægges oven på firemodel-visningen. Fejler det, står den uændret. */
+async function upgradeEnsemble(place, seq, m, demo) {
+  try {
+    const raw = demo ? demoEnsemble(m) : await loadEnsemble(place);
+    if (seq !== loadSeq) return;
+    const ens = shapeEnsemble(raw, m.time);
+    let hit = 0;
+    m.hours.forEach((h, i) => {
+      const r = ens.rows[i];
+      if (!r) return;
+      h.p10 = r.p10; h.p50 = r.p50; h.p90 = r.p90; h.prob = r.prob;
+      hit++;
+    });
+    if (hit >= m.hours.length * 0.5) m.ens = { members: ens.members };
+  } catch { /* beholder min/max af de fire modeller */ }
+}
+
 async function loadModelsInto(place, seq, fromISO, demo) {
   const fail = (msg) => {
     if (seq !== loadSeq) return;
@@ -1223,6 +1333,8 @@ async function loadModelsInto(place, seq, fromISO, demo) {
     const raw = demo ? demoModels(place, fromISO) : await loadModels(place);
     if (seq !== loadSeq) return;
     state.models = shapeModels(raw, fromISO);
+    await upgradeEnsemble(place, seq, state.models, demo);
+    if (seq !== loadSeq) return;
     renderModels();
   } catch (e) {
     fail(`Kunne ikke hente modelsammenligningen (${e.message}). Resten af siden er upåvirket.`);
@@ -1403,6 +1515,22 @@ function demoAir(fromISO) {
     H.grass_pollen.push(r1(midday * 6));
     H.mugwort_pollen.push(r1(midday * 34));
     H.ragweed_pollen.push(r1(midday * 7));
+  }
+  return { hourly: H };
+}
+
+/* Syntetisk ensemble til demo-visningen: medlemmerne spredes om firemodel-snittet. */
+function demoEnsemble(m) {
+  const H = { time: m.time.slice() };
+  const N = 51;
+  for (let k = 0; k < N; k++) {
+    const suf = k === 0 ? "" : `_member${String(k).padStart(2, "0")}`;
+    H[`temperature_2m${suf}`] = m.hours.map((h, i) => {
+      const mid = (h.min + h.max) / 2;
+      return r1(mid + Math.sin(i / 6 + k) * (0.7 + (i / m.hours.length) * 2.6));
+    });
+    H[`precipitation${suf}`] = m.hours.map((h, i) =>
+      (Math.sin(i / 4 + k * 1.3) > 1 - (h.rain / h.rainAll) * 1.7 ? r1(0.3 + (k % 3) * 0.2) : 0));
   }
   return { hourly: H };
 }
