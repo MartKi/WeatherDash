@@ -19,6 +19,7 @@
   --ok: #d19a12;
   --bad: #d4503c;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --dv-cold: #2a78d6; --dv-warm: #e34948;
   --shadow: 0 1px 2px rgba(16,28,50,.06), 0 8px 24px -12px rgba(16,28,50,.18);
   --radius: 16px;
   --maxw: 1180px;
@@ -54,6 +55,7 @@
   --warm: #ffa94d; --hot: #ff7a5c; --cold: #63b8f5; --rain: #6ea0ff;
   --good: #45c98a; --ok: #f2c14e; --bad: #ff7a68;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --dv-cold: #3987e5; --dv-warm: #e66767;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -24px rgba(0,0,0,.8);
 }
 
@@ -235,24 +237,90 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 
 /* ---------- Chart ---------- */
 .chart-card { padding: 16px 0 6px; }
-.chart-legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 0 18px 10px; font-size: 12px; color: var(--text-2); }
-.lg { display: inline-flex; align-items: center; gap: 6px; }
-.lg::before { content: ""; width: 12px; height: 3px; border-radius: 2px; background: currentColor; }
-.lg-temp::before { background: var(--warm); }
-.lg-precip::before { background: var(--rain); height: 9px; width: 7px; border-radius: 3px; }
-.lg-night::before { background: color-mix(in srgb, var(--text-3) 22%, transparent); height: 9px; width: 12px; border-radius: 3px; }
-.chart-scroll { overflow-x: auto; overflow-y: hidden; padding: 0 18px 8px; scrollbar-width: thin; }
-.chart-stack { width: max-content; min-width: 100%; }
-#chart svg { display: block; overflow: visible; }
-#chart .night { fill: color-mix(in srgb, var(--text-3) 9%, transparent); stroke: none; }
-#chart .grid { stroke: var(--line-soft); stroke-width: 1; }
-#chart .templine { stroke: var(--warm); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
-#chart .pbar { fill: var(--rain); stroke: none; opacity: .85; }
-#chart text { fill: var(--text-2); stroke: none; font-size: 11px; }
-#chart text.val { fill: var(--text); font-size: 11.5px; font-weight: 650; }
-#chart text.pval { fill: var(--rain); font-size: 10.5px; font-weight: 600; }
-#chart .vdot { fill: var(--warm); stroke: var(--surface); stroke-width: 1.5; }
-.hours { display: flex; padding-top: 2px; }
+/* --- Time for time: oversigt + lodret liste --- */
+.chart-card { padding: 16px 18px 12px; }
+
+/* Kvartersnedbør de næste to timer */
+.nowcast {
+  margin-bottom: 14px; padding: 12px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--rain) 9%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--rain) 24%, transparent);
+}
+.nc-head { font-size: 13.5px; margin-bottom: 9px; }
+.nc-bars { display: flex; gap: 4px; align-items: flex-end; }
+.nc-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.nc-step i { display: block; width: 100%; background: var(--rain); border-radius: 3px 3px 0 0; }
+.nc-step span { font-size: 10.5px; color: var(--text-3); }
+
+.daymap { margin-bottom: 6px; }
+.daymap svg { display: block; width: 100%; height: auto; overflow: visible; }
+.daymap .night { fill: color-mix(in srgb, var(--text-3) 9%, transparent); stroke: none; }
+.daymap .templine { stroke: var(--warm); stroke-width: 2.2; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.daymap .pbar { fill: var(--rain); stroke: none; opacity: .85; }
+.daymap text { stroke: none; }
+.daymap .val { fill: var(--text); font-size: 12px; font-weight: 650; }
+.daymap .maxis { fill: var(--text-3); font-size: 11px; }
+.daymap .vdot { fill: var(--warm); stroke: var(--surface); stroke-width: 1.5; }
+
+/* Én række pr. time */
+.hourlist { display: grid; gap: 2px; }
+.hrow {
+  display: grid; align-items: center; gap: 12px; width: 100%;
+  grid-template-columns: 34px 26px 46px 42px minmax(150px, 300px) 92px 54px 1fr;
+  padding: 7px 10px; border: 0; border-radius: 10px; background: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.hrow:hover { background: var(--surface-2); }
+.hrow.night { background: color-mix(in srgb, var(--text-3) 6%, transparent); }
+.hrow.night:hover { background: color-mix(in srgb, var(--text-3) 11%, transparent); }
+.hrow.wet { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--rain) 55%, transparent); }
+.hrow.now { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.hrow.sel { background: var(--accent-soft); }
+.hr-time { font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.hrow.now .hr-time { color: var(--accent); font-weight: 600; }
+.hr-icon svg { width: 24px; height: 24px; display: block; }
+.hr-temp {
+  font-size: 14px; font-weight: 650; text-align: center;
+  padding: 3px 0; border-radius: 7px;
+}
+/* Tonen bag tallet sættes i JS på en glidende, absolut forankret skala. */
+.hr-feels { font-size: 12.5px; color: var(--text-3); text-align: center; }
+
+.hr-precip { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pp-track.dry { background: color-mix(in srgb, var(--line-soft) 45%, transparent); }
+.pp-text .muted { color: var(--text-3); }
+.pp-track {
+  position: relative; flex: 1 1 40px; min-width: 40px; height: 14px;
+  background: var(--line-soft); border-radius: 4px; overflow: hidden;
+}
+.pp-prob { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--rain) 26%, transparent); }
+.pp-mm { position: absolute; left: 0; bottom: 0; height: 7px; background: var(--rain); border-radius: 0 4px 4px 0; }
+.pp-text { flex: none; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+.pp-text b { color: var(--text); font-weight: 600; }
+.hr-wind { font-size: 12.5px; color: var(--text-2); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.hr-wind small { color: var(--text-3); }
+.hr-uv { font-size: 12px; color: var(--text-3); text-align: right; white-space: nowrap; }
+
+.hours-foot { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+.more-btn {
+  padding: 7px 14px; border-radius: 9px; cursor: pointer; font-size: 13px;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+}
+.more-btn:hover { border-color: var(--accent); color: var(--accent); }
+.hours-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-3); }
+.hl { display: inline-flex; align-items: center; gap: 5px; }
+.hl i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.hl-cold { background: color-mix(in srgb, var(--dv-cold) 34%, transparent); }
+.hl-mid { background: color-mix(in srgb, var(--text-3) 10%, transparent); }
+.hl-warm { background: color-mix(in srgb, var(--dv-warm) 36%, transparent); }
+.hl-prob { background: color-mix(in srgb, var(--rain) 26%, transparent); }
+.hl-mm { background: var(--rain); width: 11px; height: 6px; }
+
+@media (max-width: 620px) {
+  .hrow { grid-template-columns: 28px 24px 40px minmax(0, 1fr) 72px; gap: 8px; padding: 7px 6px; }
+  .hr-uv, .hr-feels { display: none; }
+  .pp-text { font-size: 11.5px; }
+}
 .hour {
   width: 62px; flex: none; text-align: center; padding: 8px 2px; border-radius: 10px;
   display: grid; gap: 3px; justify-items: center;

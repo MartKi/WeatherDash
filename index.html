@@ -113,16 +113,16 @@
     </summary>
     <div class="section-body">
     <div class="card chart-card">
-      <div class="chart-legend">
-        <span class="lg lg-temp">Temperatur</span>
-        <span class="lg lg-precip">Nedbør (mm)</span>
-        <span class="lg lg-night">Nat</span>
-      </div>
-      <div class="chart-scroll" id="chart-scroll">
-        <div class="chart-stack">
-          <div id="chart"></div>
-          <div class="hours" id="hours"></div>
-        </div>
+      <div class="nowcast" id="nowcast" hidden></div>
+      <div class="daymap" id="daymap"></div>
+      <div class="hourlist" id="hourlist"></div>
+      <div class="hours-foot">
+        <button class="more-btn" id="hours-more" type="button"></button>
+        <span class="hours-legend">
+          <span class="hl"><i class="hl-cold"></i><i class="hl-mid"></i><i class="hl-warm"></i>koldt → varmt</span>
+          <span class="hl"><i class="hl-prob"></i>sandsynlighed</span>
+          <span class="hl"><i class="hl-mm"></i>mængde</span>
+        </span>
       </div>
       <div class="hour-detail" id="hour-detail" hidden></div>
     </div>
