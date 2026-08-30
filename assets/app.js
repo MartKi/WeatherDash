@@ -262,7 +262,7 @@ function modelsUrl(p) {
 function ensUrl(p) {
   const q = new URLSearchParams({
     latitude: p.lat, longitude: p.lon, timezone: "auto", forecast_days: 3,
-    models: ENS_MODEL, hourly: "temperature_2m,precipitation"
+    models: ENS_MODEL, hourly: "temperature_2m"
   });
   return `${ENS}?${q}`;
 }
@@ -285,7 +285,6 @@ const percentile = (sorted, p) => sorted[clamp(Math.round(p * (sorted.length - 1
 function shapeEnsemble(raw, times) {
   const H = raw.hourly;
   const temps = memberCols(H, "temperature_2m");
-  const precs = memberCols(H, "precipitation");
   if (temps.length < 5) throw new Error("for få medlemmer i svaret");
   return {
     members: temps.length,
@@ -294,8 +293,7 @@ function shapeEnsemble(raw, times) {
       if (j < 0) return null;
       const vals = temps.map((c) => c[j]).filter((v) => typeof v === "number" && isFinite(v)).sort((a, b) => a - b);
       if (!vals.length) return null;
-      const wet = precs.length ? precs.filter((c) => num(c[j]) >= RAIN_MM).length / precs.length : null;
-      return { p10: percentile(vals, 0.1), p50: percentile(vals, 0.5), p90: percentile(vals, 0.9), prob: wet };
+      return { p10: percentile(vals, 0.1), p50: percentile(vals, 0.5), p90: percentile(vals, 0.9) };
     })
   };
 }
@@ -940,7 +938,8 @@ function renderAir() {
 const bandLo = (m, h) => (m.ens && h.p10 !== undefined ? h.p10 : h.min);
 const bandHi = (m, h) => (m.ens && h.p90 !== undefined ? h.p90 : h.max);
 const bandSpan = (m, h) => bandHi(m, h) - bandLo(m, h);
-const rainFrac = (m, h) => (m.ens && h.prob !== undefined && h.prob !== null ? h.prob : h.rain / h.rainAll);
+const rainFrac = (m, h) => (h.probOM !== undefined ? h.probOM : h.rain / h.rainAll);
+const hasProb = (m) => Boolean(m.hasProb);
 
 /* Længste sammenhængende række timer hvor prædikatet holder. */
 function longestRun(hours, pred) {
@@ -958,44 +957,47 @@ function modelsVerdict(m) {
   const worst = first24.reduce((a, b) => (bandSpan(m, b) > bandSpan(m, a) ? b : a), first24[0]);
   const avgSpread = first24.reduce((x, h) => x + bandSpan(m, h), 0) / first24.length;
 
+  /* Temperaturen: ensemblets percentiler når de er hentet, ellers de fire modellers spænd. */
+  let tempPart;
   if (m.ens) {
-    /* p10–p90 er 80 % af medlemmerne, så spændet kan læses som et sikkerhedsinterval.
-       Usikkerheden vokser med tiden, så det andet døgn siges for sig. */
     const later = m.hours.slice(24);
     const avgLater = later.length ? later.reduce((x, h) => x + bandSpan(m, h), 0) / later.length : null;
     const grows = avgLater !== null ? ` og ${fmt(avgLater)}° i det efterfølgende døgn` : "";
-    const tempPart = avgSpread < 2
+    tempPart = avgSpread < 2
       ? `<b>Sikker temperaturprognose</b> — 80 % af de ${m.ens.members} ensemble-kørsler ligger inden for ${fmt(avgSpread)}° af hinanden det næste døgn${grows}.`
       : avgSpread < 4
         ? `<b>Nogenlunde sikker temperaturprognose</b> — 80 % af de ${m.ens.members} kørsler spænder ${fmt(avgSpread)}° det næste døgn${grows}.`
         : `<b>Usikker temperaturprognose</b> — 80 % af de ${m.ens.members} kørsler spænder ${fmt(avgSpread)}° allerede det næste døgn${grows}.`;
-
-    const peak = first24.reduce((a, b) => (rainFrac(m, b) > rainFrac(m, a) ? b : a), first24[0]);
-    const pk = Math.round(rainFrac(m, peak) * 100);
-    const rainPart = pk < 10
-      ? "Stort set ingen kørsler ser regn det næste døgn."
-      : pk >= 80
-        ? `Regn er nærmest sikker omkring kl. ${peak.hh} — ${pk} % af kørslerne har nedbør.`
-        : `Regnrisikoen topper på <b>${pk} % kl. ${peak.hh}</b>.`;
-    return `${tempPart} ${rainPart}`;
+  } else {
+    tempPart = avgSpread < 1.2
+      ? `<b>Enige om temperaturen</b> — de fire modeller ligger inden for ${fmt(avgSpread)}° af hinanden det næste døgn.`
+      : avgSpread < 2.5
+        ? `<b>Nogenlunde enige om temperaturen</b> — typisk ${fmt(avgSpread)}° fra hinanden, størst forskel kl. ${worst.hh} (${fmt(bandSpan(m, worst))}°).`
+        : `<b>Uenige om temperaturen</b> — i gennemsnit ${fmt(avgSpread)}° fra hinanden, og kl. ${worst.hh} skiller ${fmt(bandSpan(m, worst))}° dem.`;
   }
 
-  const tempPart = avgSpread < 1.2
-    ? `<b>Enige om temperaturen</b> — de ligger inden for ${fmt(avgSpread)}° af hinanden det næste døgn.`
-    : avgSpread < 2.5
-      ? `<b>Nogenlunde enige om temperaturen</b> — typisk ${fmt(avgSpread)}° fra hinanden, størst forskel kl. ${worst.hh} (${fmt(bandSpan(m, worst))}°).`
-      : `<b>Uenige om temperaturen</b> — i gennemsnit ${fmt(avgSpread)}° fra hinanden, og kl. ${worst.hh} skiller ${fmt(bandSpan(m, worst))}° dem.`;
-
-  const split = longestRun(first24, (h) => h.rain > 0 && h.rain < h.rainAll);
-  const allRain = longestRun(first24, (h) => h.rain === h.rainAll);
-  const anyRain = first24.some((h) => h.rain > 0);
-  const rainPart = !anyRain
-    ? "Alle modeller ser tørt vejr det næste døgn."
-    : allRain && (!split || allRain.n >= split.n)
-      ? `Alle er enige om regn kl. ${allRain.start.hh}–${allRain.end.hh}.`
-      : split
-        ? `Til gengæld er de <b>uenige om regn kl. ${split.start.hh}–${split.end.hh}</b>, hvor op til ${Math.max(...split.items.map((h) => h.rain))} af ${split.start.rainAll} modeller ser nedbør — hold øje med den periode.`
-        : "De er stort set enige om nedbøren.";
+  /* Regnen: samme sandsynlighed som Time for time viser. */
+  let rainPart;
+  if (hasProb(m)) {
+    const peak = first24.reduce((a, b) => (rainFrac(m, b) > rainFrac(m, a) ? b : a), first24[0]);
+    const pk = Math.round(rainFrac(m, peak) * 100);
+    rainPart = pk < 10
+      ? "Risikoen for nedbør er under 10 % hele det næste døgn."
+      : pk >= 80
+        ? `Regn er nærmest sikker omkring kl. ${peak.hh} — ${pk} % risiko.`
+        : `Regnrisikoen topper på <b>${pk} % kl. ${peak.hh}</b>.`;
+  } else {
+    const split = longestRun(first24, (h) => h.rain > 0 && h.rain < h.rainAll);
+    const allRain = longestRun(first24, (h) => h.rain === h.rainAll);
+    const anyRain = first24.some((h) => h.rain > 0);
+    rainPart = !anyRain
+      ? "Alle modeller ser tørt vejr det næste døgn."
+      : allRain && (!split || allRain.n >= split.n)
+        ? `Alle er enige om regn kl. ${allRain.start.hh}–${allRain.end.hh}.`
+        : split
+          ? `De er <b>uenige om regn kl. ${split.start.hh}–${split.end.hh}</b>, hvor op til ${Math.max(...split.items.map((h) => h.rain))} af ${split.start.rainAll} modeller ser nedbør.`
+          : "De er stort set enige om nedbøren.";
+  }
   return `${tempPart} ${rainPart}`;
 }
 
@@ -1009,16 +1011,17 @@ function renderModels() {
 
   const first24 = m.hours.slice(0, 24);
   const avgSpread = first24.reduce((x, h) => x + bandSpan(m, h), 0) / first24.length;
-  if (m.ens) {
+  const wide = m.ens ? 4 : 2.5, mid = m.ens ? 2 : 1.2;
+  if (hasProb(m)) {
     const pk = Math.round(Math.max(...first24.map((h) => rainFrac(m, h))) * 100);
     setChip("#chip-models",
       `${pk >= 10 ? `Regn op til ${pk} %` : "Tørt"} · ±${fmt(avgSpread)}°`,
-      avgSpread < 2 && pk < 40 ? "g" : avgSpread < 4 && pk < 70 ? "o" : "b");
+      avgSpread < mid && pk < 40 ? "g" : avgSpread < wide && pk < 70 ? "o" : "b");
   } else {
     const split = first24.some((h) => h.rain > 0 && h.rain < h.rainAll);
     setChip("#chip-models",
-      split ? `Uenige om regn · ±${fmt(avgSpread)}°` : `${avgSpread < 1.2 ? "Enige" : avgSpread < 2.5 ? "Nogenlunde enige" : "Uenige"} · ±${fmt(avgSpread)}°`,
-      avgSpread < 1.2 && !split ? "g" : avgSpread < 2.5 ? "o" : "b");
+      split ? `Uenige om regn · ±${fmt(avgSpread)}°` : `${avgSpread < mid ? "Enige" : avgSpread < wide ? "Nogenlunde enige" : "Uenige"} · ±${fmt(avgSpread)}°`,
+      avgSpread < mid && !split ? "g" : avgSpread < wide ? "o" : "b");
   }
   $("#models-legend").innerHTML = m.series.map((s) =>
     `<span class="mlg"><i style="background:var(--s${s.slot})"></i>${esc(s.name)} <small>${esc(s.origin)}</small></span>`).join("")
@@ -1086,7 +1089,7 @@ function renderModels() {
   }).join("");
   const rainLabel = `<text class="maxis" x="${padL - 8}" y="${rainY + rainH - 3}" text-anchor="end">Regn</text>`;
   const rainTitles = m.hours.map((h, i) =>
-    `<rect x="${(padL + i * cellW).toFixed(1)}" y="${rainY}" width="${Math.max(cellW - 1.5, 1).toFixed(1)}" height="${rainH}" fill="transparent" stroke="none"><title>kl. ${h.hh}: ${m.ens ? `${Math.round(rainFrac(m, h) * 100)} % af kørslerne` : `${h.rain} af ${h.rainAll} modeller`} ser regn</title></rect>`).join("");
+    `<rect x="${(padL + i * cellW).toFixed(1)}" y="${rainY}" width="${Math.max(cellW - 1.5, 1).toFixed(1)}" height="${rainH}" fill="transparent" stroke="none"><title>kl. ${h.hh}: ${hasProb(m) ? `${Math.round(rainFrac(m, h) * 100)} % risiko for nedbør` : `${h.rain} af ${h.rainAll} modeller ser regn`}</title></rect>`).join("");
 
   /* Dage: adskillere gennem begge felter og navnet centreret i sit døgn */
   const bounds = [0];
@@ -1109,15 +1112,15 @@ function renderModels() {
     </svg>`;
   bindCrosshair(x, padL, W, padR);
   $("#mchart-cap").textContent = (m.ens
-    ? `Linjerne er fire nationale modellers bud, og markeringen viser timen, hvor de er mest uenige. Det tonede felt er ECMWF's ensemble: 80 % af de ${m.ens.members} kørsler ligger derinde, og feltet breder sig, jo længere frem prognosen rækker. Rækken Regn viser, hvor stor en del af kørslerne der har nedbør i timen.`
-    : "Øverst temperaturen pr. model — det tonede felt er spændet mellem koldeste og varmeste, og markeringen viser timen med størst uenighed. Rækken Regn viser, hvor mange modeller der ser nedbør i timen.")
+    ? `Linjerne er fire nationale modellers bud, og markeringen viser timen, hvor de er mest uenige. Det tonede felt er ECMWF's ensemble: 80 % af de ${m.ens.members} kørsler ligger derinde, og feltet breder sig, jo længere frem prognosen rækker. Rækken Regn er ${hasProb(m) ? "den samme nedbørssandsynlighed, som Time for time viser" : "antallet af modeller med nedbør i timen"}.`
+    : `Øverst temperaturen pr. model — det tonede felt er spændet mellem koldeste og varmeste, og markeringen viser timen med størst uenighed. Rækken Regn er ${hasProb(m) ? "den samme nedbørssandsynlighed, som Time for time viser" : "antallet af modeller med nedbør i timen"}.`)
     + (narrow ? " Tryk i grafen for at læse en time." : "");
 
-  const scale = m.ens ? [0, 0.25, 0.5, 0.75, 1] : [0, 1, 2, 3, 4].filter((k) => k <= m.series.length).map((k) => k / m.series.length);
+  const scale = hasProb(m) ? [0, 0.25, 0.5, 0.75, 1] : [0, 1, 2, 3, 4].filter((k) => k <= m.series.length).map((k) => k / m.series.length);
   $("#rainscale").innerHTML = scale.map((f) =>
     `<span class="rkey"><i style="background:${f === 0 ? "var(--line-soft)" : `color-mix(in srgb, var(--rain) ${Math.round(20 + f * 80)}%, transparent)`}"></i>${
-      m.ens ? `${Math.round(f * 100)} %` : Math.round(f * m.series.length)}</span>`).join("")
-    + `<span class="rkey-txt">${m.ens ? "af ensemble-kørslerne har nedbør i timen" : "modeller ser regn i timen"}</span>`;
+      hasProb(m) ? `${Math.round(f * 100)} %` : Math.round(f * m.series.length)}</span>`).join("")
+    + `<span class="rkey-txt">${hasProb(m) ? "sandsynlighed for nedbør — samme tal som i Time for time" : "modeller ser regn i timen"}</span>`;
 
   /* Tabelvisning — samme tal, uden farvekodning */
   const sum = (a) => a.reduce((x2, v) => x2 + num(v), 0);
@@ -1149,9 +1152,8 @@ function bindCrosshair(x, padL, W, padR) {
     cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i));
     tip.innerHTML = `<b>${dayName(h.key)} kl. ${h.hh}</b>` +
       m.series.map((s) => `<span><i style="background:var(--s${s.slot})"></i>${esc(s.short)}<em>${fmt(num(s.temp[i]))}°</em></span>`).join("") +
-      (m.ens
-        ? `<span class="tip-rain">${Math.round(rainFrac(m, h) * 100)} % risiko · ${Math.round(h.p10)}–${Math.round(h.p90)}°</span>`
-        : `<span class="tip-rain">${h.rain} af ${h.rainAll} ser regn</span>`);
+      `<span class="tip-rain">${hasProb(m) ? `${Math.round(rainFrac(m, h) * 100)} % risiko` : `${h.rain} af ${h.rainAll} ser regn`}${
+        m.ens && h.p10 !== undefined ? ` · ${Math.round(h.p10)}–${Math.round(h.p90)}°` : ""}</span>`;
     tip.hidden = false;
     const left = clamp((x(i) / W) * r.width - 70, 4, Math.max(4, r.width - 148));
     tip.style.left = `${left}px`;
@@ -1313,11 +1315,25 @@ async function upgradeEnsemble(place, seq, m, demo) {
     m.hours.forEach((h, i) => {
       const r = ens.rows[i];
       if (!r) return;
-      h.p10 = r.p10; h.p50 = r.p50; h.p90 = r.p90; h.prob = r.prob;
+      h.p10 = r.p10; h.p50 = r.p50; h.p90 = r.p90;
       hit++;
     });
     if (hit >= m.hours.length * 0.5) m.ens = { members: ens.members };
   } catch { /* beholder min/max af de fire modeller */ }
+}
+
+/* Nedbørssandsynligheden skal komme ét sted fra, ellers kan Prognosesikkerhed og
+   Time for time vise to forskellige tal for samme time. Hovedprognosens
+   precipitation_probability er den fælles kilde; den slås op på tidsstemplet. */
+function attachProb(m, data) {
+  if (!data) return;
+  const byTime = new Map(data.hours.map((h) => [h.t, h]));
+  let hit = 0;
+  m.hours.forEach((h) => {
+    const src = byTime.get(h.t);
+    if (src && typeof src.prob === "number" && isFinite(src.prob)) { h.probOM = src.prob / 100; hit++; }
+  });
+  m.hasProb = hit >= m.hours.length * 0.5;
 }
 
 async function loadModelsInto(place, seq, fromISO, demo) {
@@ -1333,6 +1349,7 @@ async function loadModelsInto(place, seq, fromISO, demo) {
     const raw = demo ? demoModels(place, fromISO) : await loadModels(place);
     if (seq !== loadSeq) return;
     state.models = shapeModels(raw, fromISO);
+    attachProb(state.models, state.data);
     await upgradeEnsemble(place, seq, state.models, demo);
     if (seq !== loadSeq) return;
     renderModels();
@@ -1529,8 +1546,6 @@ function demoEnsemble(m) {
       const mid = (h.min + h.max) / 2;
       return r1(mid + Math.sin(i / 6 + k) * (0.7 + (i / m.hours.length) * 2.6));
     });
-    H[`precipitation${suf}`] = m.hours.map((h, i) =>
-      (Math.sin(i / 4 + k * 1.3) > 1 - (h.rain / h.rainAll) * 1.7 ? r1(0.3 + (k % 3) * 0.2) : 0));
   }
   return { hourly: H };
 }

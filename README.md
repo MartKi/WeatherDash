@@ -28,7 +28,7 @@ Alt hentes i browseren fra [Open-Meteo](https://open-meteo.com/) — gratis, ing
 
 * `api.open-meteo.com` — time- og dagsprognose 7 dage frem (temperatur, føles-som, nedbør og sandsynlighed, vind og vindstød, sigtbarhed, UV, skydække, indstråling, ET₀-fordampning, sol op/ned).
 * `geocoding-api.open-meteo.com` — bysøgning og opslag af koordinater fra browserens stedbestemmelse.
-* `ensemble-api.open-meteo.com` — ECMWF's ensemble (`ecmwf_ifs025`): samme model kørt ~51 gange med små forstyrrelser i starttilstanden. Medlemmerne læses ud af svaret ved at scanne nøglerne (`temperature_2m_member01` osv.) frem for at antage et antal, og bruges til p10/p90-båndet og til regnsandsynligheden.
+* `ensemble-api.open-meteo.com` — ECMWF's ensemble (`ecmwf_ifs025`): samme model kørt ~51 gange med små forstyrrelser i starttilstanden. Medlemmerne læses ud af svaret ved at scanne nøglerne (`temperature_2m_member01` osv.) frem for at antage et antal, og bruges til p10/p90-båndet.
 * `air-quality-api.open-meteo.com` — luftkvalitet og pollental fra Copernicus' CAMS-model: europæisk luftkvalitetsindeks, PM2,5, PM10, ozon, kvælstofdioxid samt pollen fra el, birk, græs, bynke og ambrosia. Pollen og de europæiske indeks dækker kun Europa; uden for Europa udelades de felter, der mangler.
 
 Valgt sted og tema gemmes i `localStorage`. Data genindlæses hvert 15. minut, når fanen er synlig.
@@ -47,6 +47,8 @@ samt lavtstående sol inden for en time af solop-/nedgang ved lavt skydække.
 vindue med score ≥ 6,8 mellem kl. 06 og 22.
 
 **Prognosesikkerhed** — afsnittet svarer på to forskellige spørgsmål med hver sin visning. De fire farvede linjer er nationale centres deterministiske bud, og markeringen viser den time, hvor de er mest uenige — altså strukturel uenighed mellem uafhængige beregninger. Det tonede felt er derimod ECMWF's ensemble: p10–p90 af ~51 kørsler, så 80 % af dem ligger inden i feltet. Kun ensemblet giver en egentlig sandsynlighed, fordi medlemmerne er indbyrdes ombyttelige; "3 af 4 modeller" er ikke 75 %. Regnrækken viser derfor andelen af ensemble-kørsler med nedbør, når ensemblet kan hentes, og ellers antallet af de fire modeller.
+
+**Nedbørssandsynligheden har én kilde.** Både Time for time og Prognosesikkerhed viser hovedprognosens `precipitation_probability`, slået op på tidsstemplet, så de to afsnit ikke kan vise forskellige tal for samme time. Det var de før: Prognosesikkerhed talte selv ensemble-medlemmer med mindst 0,2 mm, hvilket gav 0 % hvor hovedprognosen sagde 56 %. Ensemblet bruges nu kun til temperaturbåndet, hvor det er den eneste kilde. Falder hovedprognosens sandsynlighed bort, viser rækken i stedet antallet af de fire modeller med nedbør — og siger det.
 
 Markøren bliver bevidst ved modellernes uenighed frem for ensemblets spredning: sidstnævnte vokser pr. definition med prognoselængden og ville derfor altid udpege den sidste time i vinduet.
 
