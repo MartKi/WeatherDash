@@ -49,7 +49,7 @@ const TERRACE = {
   potArea: 0.049       // m² for en 25 cm potte (til liter-/ml-beregning)
 };
 
-const state = { place: null, data: null, day: 0, demo: false, viewHours: [], hourSel: -1, models: null, air: null };
+const state = { place: null, data: null, day: 0, demo: false, viewHours: [], hourSel: -1, hoursShown: 12, models: null, air: null };
 
 /* localStorage kan kaste i privat tilstand — huskefunktionen må aldrig vælte siden. */
 const store = {
@@ -165,6 +165,7 @@ function weatherUrl(p) {
     latitude: p.lat, longitude: p.lon, timezone: "auto", forecast_days: 7, wind_speed_unit: "ms",
     current: "temperature_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,wind_direction_10m",
     hourly: "temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,cloud_cover,visibility,wind_speed_10m,wind_gusts_10m,wind_direction_10m,uv_index,relative_humidity_2m,is_day,shortwave_radiation",
+    minutely_15: "precipitation",
     daily: "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,sunrise,sunset,sunshine_duration,et0_fao_evapotranspiration"
   });
   return `${API}?${q}`;
@@ -409,6 +410,31 @@ function shape(raw) {
   };
 }
 
+/* Kvartersnedbør de næste to timer. Open-Meteo leverer kun ægte 15-minutters data,
+   hvor en højopløst model dækker; ellers er tallene interpoleret fra timeprognosen
+   og siger intet nyt. Vi viser derfor kun striben, når den afviger fra en ret linje
+   mellem timeværdierne. */
+function shapeNowcast(raw, hours, nowT) {
+  const M = raw && raw.minutely_15;
+  if (!M || !Array.isArray(M.time) || !Array.isArray(M.precipitation)) return null;
+  let i = M.time.findIndex((t) => t >= nowT);
+  if (i < 0) return null;
+  const steps = M.time.slice(i, i + 8).map((t, k) => ({ t, hh: hhmm(t), mm: num(M.precipitation[i + k]) }));
+  if (steps.length < 4) return null;
+
+  /* Sammenlign med lineær interpolation mellem de omgivende timeværdier. */
+  const byHour = new Map(hours.map((h) => [h.t.slice(0, 13), h.precip]));
+  let deviation = 0;
+  steps.forEach((st) => {
+    const h0 = byHour.get(st.t.slice(0, 13));
+    if (h0 === undefined) return;
+    deviation += Math.abs(st.mm - h0 / 4);   // timenedbør fordelt jævnt på fire kvarter
+  });
+  const real = deviation > 0.08;
+  const total = steps.reduce((a, b) => a + b.mm, 0);
+  return { steps, real, total, wet: steps.some((st) => st.mm >= 0.05) };
+}
+
 /* ---------- scoring ---------- */
 function driveScore(h, day) {
   let s = 10;
@@ -645,6 +671,17 @@ function renderPlan(d) {
 }
 
 /* SVG-graf: temperatur, føles-som og nedbør. */
+/* Temperaturbånd på en divergerende skala: kold blå → neutral → varm rød.
+   Farven er en tone bag tallet, aldrig tallets egen farve, så kontrasten er sikker. */
+const TEMP_MID = 15;    // neutralt midtpunkt: behageligt
+const TEMP_SPAN = 14;   // ±14° til fuld tone
+function tempTint(t) {
+  const f = clamp((t - TEMP_MID) / TEMP_SPAN, -1, 1);
+  const pct = Math.round(Math.abs(f) * 34);
+  if (pct < 3) return "color-mix(in srgb, var(--text-3) 9%, transparent)";
+  return `color-mix(in srgb, var(--dv-${f < 0 ? "cold" : "warm"}) ${pct}%, transparent)`;
+}
+
 /* Glat kurve gennem punkterne — Catmull-Rom omsat til kubiske bezier-segmenter. */
 function smoothPath(pts) {
   if (pts.length < 3) return pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
@@ -658,69 +695,63 @@ function smoothPath(pts) {
   return d;
 }
 
+/* Oversigt over hele vinduet i containerens bredde — ingen vandret scroll.
+   Den er et kort over døgnet; detaljen ligger i listen nedenunder. */
 function renderChart(hours, day) {
-  const W = 62, H = 158, padT = 26, padB = 40;
-  const w = Math.max(hours.length * W, 320);
+  const wrapW = $("#daymap").clientWidth || 900;
+  const W = Math.max(320, wrapW), H = 104;
+  const padT = 16, padB = 30, padL = 4, padR = 4;
   const base = H - padB;
   const temps = hours.map((h) => h.temp);
   let lo = Math.min(...temps), hi = Math.max(...temps);
-  if (hi - lo < 6) { const mid = (hi + lo) / 2; lo = mid - 3; hi = mid + 3; }
-  lo -= 1; hi += 1;
-  const x = (i) => i * W + W / 2;
+  if (hi - lo < 5) { const mid = (hi + lo) / 2; lo = mid - 2.5; hi = mid + 2.5; }
+  lo -= 1.5; hi += 1.5;
+  const n = hours.length;
+  const x = (i) => padL + (i / (n - 1)) * (W - padL - padR);
   const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (base - padT);
   const maxP = Math.max(1.5, ...hours.map((h) => h.precip));
 
-  /* Nat som ét sammenhængende felt pr. mørkeperiode, ikke en kolonne pr. time */
   const nights = [];
   let ns = -1;
   hours.forEach((h, i) => {
     if (!h.isDay && ns < 0) ns = i;
-    if ((h.isDay || i === hours.length - 1) && ns >= 0) {
-      const end = h.isDay ? i : i + 1;
-      nights.push(`<rect class="night" x="${ns * W}" y="0" width="${(end - ns) * W}" height="${base + 12}" rx="8"/>`);
+    if ((h.isDay || i === n - 1) && ns >= 0) {
+      const x0 = x(Math.max(ns - 0.5, 0)), x1 = x(Math.min((h.isDay ? i : i + 1) - 0.5, n - 1));
+      nights.push(`<rect class="night" x="${x0.toFixed(1)}" y="0" width="${Math.max(x1 - x0, 2).toFixed(1)}" height="${base + 10}" rx="6"/>`);
       ns = -1;
     }
   });
 
-  const pts = hours.map((h, i) => [x(i), y(h.temp)]);
-  const curve = smoothPath(pts);
-  const fill = `<path fill="url(#tempgrad)" stroke="none" d="${curve}L${x(hours.length - 1).toFixed(1)},${base}L${x(0).toFixed(1)},${base}Z"/>`;
-
-  /* Nedbør: afrundede søjler fra bunden, mm-tal over de væsentlige */
+  const curve = smoothPath(hours.map((h, i) => [x(i), y(h.temp)]));
+  const fill = `<path fill="url(#tempgrad)" stroke="none" d="${curve}L${x(n - 1).toFixed(1)},${base}L${x(0).toFixed(1)},${base}Z"/>`;
   const bars = hours.map((h, i) => {
     if (h.precip < 0.05) return "";
-    const bh = Math.max(3, (h.precip / maxP) * 34);
-    return `<rect class="pbar" x="${x(i) - 7}" y="${(base + 12 - bh).toFixed(1)}" width="14" height="${bh.toFixed(1)}" rx="3"/>` +
-      (h.precip >= 0.5 ? `<text class="pval" x="${x(i)}" y="${(base + 12 - bh - 5).toFixed(1)}" text-anchor="middle">${fmt(h.precip)}</text>` : "");
+    const bh = Math.max(2.5, (h.precip / maxP) * 22);
+    const w = Math.max(3, (W - padL - padR) / n * 0.55);
+    return `<rect class="pbar" x="${(x(i) - w / 2).toFixed(1)}" y="${(base + 10 - bh).toFixed(1)}" width="${w.toFixed(1)}" height="${bh.toFixed(1)}" rx="2"/>`;
   }).join("");
 
-  /* Kun yderpunkterne får tal — timelisten nedenunder har alle værdierne */
   const iMax = temps.indexOf(Math.max(...temps));
   const iMin = temps.indexOf(Math.min(...temps));
-  const labels = [...new Set([iMax, iMin])].map((i) =>
-    `<text class="val" x="${x(i)}" y="${(y(temps[i]) - 10).toFixed(1)}" text-anchor="middle">${Math.round(temps[i])}°</text>`).join("");
-  const dots = [...new Set([iMax, iMin])].map((i) =>
-    `<circle class="vdot" cx="${x(i)}" cy="${y(temps[i]).toFixed(1)}" r="3.2"/>`).join("");
+  const marks = [...new Set([iMax, iMin])].map((i) =>
+    `<circle class="vdot" cx="${x(i).toFixed(1)}" cy="${y(temps[i]).toFixed(1)}" r="3"/>` +
+    `<text class="val" x="${clamp(x(i), 16, W - 16).toFixed(1)}" y="${(y(temps[i]) - 9).toFixed(1)}" text-anchor="middle">${Math.round(temps[i])}°</text>`).join("");
 
-  const grid = [0.25, 0.75].map((f) => {
-    const v = lo + (hi - lo) * f;
-    return `<line class="grid" x1="0" x2="${w}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/>`;
-  }).join("");
+  /* Klokkeslæt hver sjette time, så aksen kan læses uden at fylde. */
+  const ticks = hours.map((h, i) => (i === 0 || Number(h.hh.slice(0, 2)) % 6 === 0
+    ? `<text class="maxis" x="${clamp(x(i), 14, W - 14).toFixed(1)}" y="${H - 8}" text-anchor="middle">${i === 0 ? "nu" : h.hh.slice(0, 2)}</text>`
+    : "")).join("");
 
-  $("#chart").innerHTML = `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}" role="img"
-      aria-label="Temperatur og nedbør time for time">
+  $("#daymap").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="Temperatur og nedbør de næste ${n} timer">
       <defs><linearGradient id="tempgrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="var(--warm)" stop-opacity=".26"/>
+        <stop offset="0" stop-color="var(--warm)" stop-opacity=".24"/>
         <stop offset="1" stop-color="var(--warm)" stop-opacity="0"/>
       </linearGradient></defs>
-      ${nights.join("")}${grid}${fill}<path class="templine" d="${curve}"/>${bars}${dots}${labels}</svg>`;
-  const pSum = hours.reduce((x, h) => x + h.precip, 0);
-  setChip("#chip-today",
-    `${Math.round(Math.min(...temps))}–${Math.round(Math.max(...temps))}° · ${pSum >= 0.05 ? `${fmt(pSum)} mm` : "tørt"}`,
-    pSum >= 3 ? "o" : "");
+      ${nights.join("")}${fill}<path class="templine" d="${curve}"/>${bars}${marks}${ticks}</svg>`;
 
   $("#today-sub").textContent = day
-    ? `${dayName(day.key)} ${dayDate(day.key)} — ${hours.length} timer. Skyggede felter er nat.`
+    ? `${dayName(day.key)} ${dayDate(day.key)} — ${hours.length} timer. Tryk på en time for alle detaljer.`
     : "Temperatur, nedbør og vind de næste 24 timer. Tryk på en time for alle detaljer.";
 }
 
@@ -728,20 +759,62 @@ function windArrow(deg) {
   return `<svg class="warrow" viewBox="0 0 24 24" style="transform:rotate(${Math.round(num(deg)) + 180}deg)" aria-hidden="true"><path d="M12 20V5.5M12 5.5 7.8 10M12 5.5l4.2 4.5"/></svg>`;
 }
 
+function renderNowcast() {
+  const el = $("#nowcast");
+  const nc = state.nowcast;
+  if (!nc || !nc.real || !nc.wet) { el.hidden = true; return; }
+  el.hidden = false;
+  const max = Math.max(0.4, ...nc.steps.map((s) => s.mm));
+  const first = nc.steps.findIndex((s) => s.mm >= 0.05);
+  const minutes = first * 15;
+  const head = first === 0
+    ? `<b>Det regner nu</b> — ${fmt(nc.total)} mm de næste to timer`
+    : `<b>Nedbør om ca. ${minutes} min</b> — ${fmt(nc.total)} mm i alt de næste to timer`;
+  el.innerHTML = `<div class="nc-head">${head}</div>
+    <div class="nc-bars">${nc.steps.map((s) => `
+      <span class="nc-step" title="kl. ${s.hh}: ${fmt(s.mm)} mm">
+        <i style="height:${Math.max(s.mm >= 0.05 ? 12 : 3, (s.mm / max) * 34).toFixed(0)}px;opacity:${s.mm >= 0.05 ? 1 : 0.35}"></i>
+        <span>${s.hh}</span>
+      </span>`).join("")}</div>`;
+}
+
 function renderHours(hours, nowT) {
   state.viewHours = hours;
   state.hourSel = -1;
   $("#hour-detail").hidden = true;
-  $("#hours").innerHTML = hours.map((h, i) => `
-    <button type="button" class="hour${h.t === nowT ? " now" : ""}" data-i="${i}" aria-expanded="false"
-      aria-label="Detaljer for kl. ${h.hh}">
-      <span class="h">${h.t === nowT ? "nu" : h.hh}</span>
-      ${weatherIcon(h.code, h.isDay)}
-      <span class="w"><b style="color:var(--text)">${Math.round(h.temp)}°</b></span>
-      <span class="p">${h.precip >= 0.05 ? `${fmt(h.precip)} mm` : h.prob >= 20 ? `${Math.round(h.prob)}%` : ""}</span>
-      <span class="w wind">${windArrow(h.wdir)}${fmt(h.wind)}</span>
-    </button>`).join("");
-  $("#hours").querySelectorAll(".hour").forEach((b) => b.addEventListener("click", () => toggleHour(+b.dataset.i)));
+
+  const show = Math.min(state.hoursShown || 12, hours.length);
+  const maxMM = Math.max(2, ...hours.map((h) => h.precip));
+  const rows = hours.slice(0, show).map((h, i) => {
+    const prob = clamp(h.prob, 0, 100);
+    /* Kvadratrod, så en let byge stadig er synlig ved siden af et skybrud. */
+    const mmW = h.precip >= 0.05 ? clamp(Math.sqrt(h.precip / maxMM) * 100, 6, 100) : 0;
+    const wet = h.precip >= 0.05 || prob >= 40;
+    return `<button type="button" class="hrow${h.t === nowT ? " now" : ""}${h.isDay ? "" : " night"}${wet ? " wet" : ""}"
+        data-i="${i}" aria-label="Detaljer for kl. ${h.hh}">
+      <span class="hr-time">${h.t === nowT ? "nu" : h.hh.slice(0, 2)}</span>
+      <span class="hr-icon">${weatherIcon(h.code, h.isDay)}</span>
+      <span class="hr-temp" style="background:${tempTint(h.temp)}">${Math.round(h.temp)}°</span>
+      <span class="hr-feels">${Math.round(h.feels)}°</span>
+      <span class="hr-precip">
+        <span class="pp-track${prob < 5 && !mmW ? " dry" : ""}">
+          <i class="pp-prob" style="width:${prob}%"></i>
+          ${mmW ? `<i class="pp-mm" style="width:${mmW.toFixed(1)}%"></i>` : ""}
+        </span>
+        <span class="pp-text">${h.precip >= 0.05 ? `<b>${fmt(h.precip)} mm</b>` : ""}${
+          h.precip >= 0.05 && prob >= 10 ? " · " : ""}${prob >= 10 ? `${Math.round(prob)} %` : ""}${
+          h.precip < 0.05 && prob < 10 ? "<span class=\"muted\">tørt</span>" : ""}</span>
+      </span>
+      <span class="hr-wind">${windArrow(h.wdir)}${fmt(h.wind)}<small> m/s</small></span>
+      <span class="hr-uv">${h.uv >= 1 ? `UV ${fmt(h.uv)}` : ""}</span>
+    </button>`;
+  }).join("");
+  $("#hourlist").innerHTML = rows;
+  $("#hourlist").querySelectorAll(".hrow").forEach((b) => b.addEventListener("click", () => toggleHour(+b.dataset.i)));
+
+  const more = $("#hours-more");
+  more.hidden = hours.length <= 12;
+  more.textContent = show >= hours.length ? "Vis færre timer" : `Vis alle ${hours.length} timer`;
 }
 
 /* Detaljepanel under timelisten — erstatter hover-tooltips, som ikke findes på mobil. */
@@ -749,7 +822,7 @@ function toggleHour(i) {
   const panel = $("#hour-detail");
   const close = !panel.hidden && state.hourSel === i;
   state.hourSel = close ? -1 : i;
-  $("#hours").querySelectorAll(".hour").forEach((b) => {
+  $("#hourlist").querySelectorAll(".hrow").forEach((b) => {
     const on = !close && +b.dataset.i === i;
     b.classList.toggle("sel", on);
     b.setAttribute("aria-expanded", String(on));
@@ -1225,6 +1298,7 @@ function selectDay(i) {
 function renderAll() {
   const d = state.data;
   renderHero(d);
+  renderNowcast();
   renderPlan(d);
   renderWeek(d);
   renderPlants(d);
@@ -1263,18 +1337,23 @@ async function load(place) {
   store.set("wd.place", JSON.stringify(place));
   $("#refresh-btn").classList.add("spin");
   $("#place-line").textContent = `Henter vejr for ${place.name}…`;
-  let data, demo, err;
+  let data, demo, err, rawMain = null;
   try {
-    data = shape(await loadWeather(place));
+    rawMain = await loadWeather(place);
+    data = shape(rawMain);
     demo = false;
   } catch (e) {
-    data = shape(demoData(place));
+    rawMain = demoData(place);
+    data = shape(rawMain);
     demo = true;
     err = e;
   }
   if (seq !== loadSeq) return; // et nyere kald er i gang eller færdigt
   state.data = data;
   state.demo = demo;
+  state.nowcast = (() => {
+    try { return shapeNowcast(rawMain, data.hours, data.hours[data.nowIndex].t); } catch { return null; }
+  })();
   state.models = null;
   state.air = null;
   banner(demo ? `Kunne ikke hente live data (${err.message}) — viser demo-data, så du kan se dashboardet.` : null, demo);
@@ -1477,6 +1556,16 @@ function demoData(place) {
     daily.sunshine_duration.push(psum > 3 ? 7200 : 34000);
     daily.et0_fao_evapotranspiration.push(r1(psum > 3 ? 1.9 : 3.6));
   }
+  /* Kvartersnedbør med ægte variation inden i timen, så nowcast-striben kan afprøves. */
+  const minutely_15 = { time: [], precipitation: [] };
+  const q0 = new Date(now.getTime() - 3600e3);
+  for (let k = 0; k < 24; k++) {
+    const t = new Date(q0.getTime() + k * 900e3);
+    const stamp = `${iso(t).slice(0, 14)}${String(t.getMinutes()).padStart(2, "0")}`;
+    minutely_15.time.push(stamp);
+    minutely_15.precipitation.push(k >= 6 && k <= 11 ? r1([0.1, 0.5, 0.9, 0.6, 0.3, 0.1][k - 6]) : 0);
+  }
+
   const ni = hourly.time.indexOf(iso(now));
   const i = ni < 0 ? 12 : ni;
   return {
@@ -1487,7 +1576,7 @@ function demoData(place) {
       cloud_cover: hourly.cloud_cover[i], relative_humidity_2m: hourly.relative_humidity_2m[i],
       wind_speed_10m: hourly.wind_speed_10m[i], wind_gusts_10m: hourly.wind_gusts_10m[i], wind_direction_10m: hourly.wind_direction_10m[i]
     },
-    hourly, daily, _place: place
+    hourly, daily, minutely_15, _place: place
   };
 }
 
@@ -1583,6 +1672,11 @@ function initSections() {
   });
 }
 
+$("#hours-more").addEventListener("click", () => {
+  state.hoursShown = (state.hoursShown || 12) >= state.viewHours.length ? 12 : state.viewHours.length;
+  renderHours(state.viewHours, state.data.hours[state.data.nowIndex].t);
+});
+
 /* Grafen tegnes i pixels, så den skal gentegnes når bredden ændrer sig. */
 let resizeTimer, lastW = 0;
 window.addEventListener("resize", () => {
@@ -1590,6 +1684,7 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(() => {
     const w = $("#mchart-wrap").clientWidth || 0;
     if (state.models && Math.abs(w - lastW) > 24) { lastW = w; renderModels(); }
+    if (state.viewHours.length) renderChart(state.viewHours, state.day ? state.data.days[state.day] : null);
   }, 160);
 });
 
