@@ -256,7 +256,8 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .daymap svg { display: block; width: 100%; height: auto; overflow: visible; }
 .daymap .night { fill: color-mix(in srgb, var(--text-3) 9%, transparent); stroke: none; }
 .daymap .templine { stroke: var(--warm); stroke-width: 2.2; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.daymap .pbar { fill: var(--rain); stroke: none; opacity: .85; }
+.daymap .pbar { fill: var(--rain); stroke: none; opacity: .8; }
+.daymap .rbase { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .daymap text { stroke: none; }
 .daymap .val { fill: var(--text); font-size: 12px; font-weight: 650; }
 .daymap .maxis { fill: var(--text-3); font-size: 11px; }
@@ -266,7 +267,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .hourlist { display: grid; gap: 2px; }
 .hrow {
   display: grid; align-items: center; gap: 12px; width: 100%;
-  grid-template-columns: 34px 26px 46px 42px minmax(150px, 300px) 92px 54px 1fr;
+  grid-template-columns: 34px 26px 46px 42px minmax(150px, 210px) 92px 54px 1fr;
   padding: 7px 10px; border: 0; border-radius: 10px; background: none;
   font: inherit; color: inherit; text-align: left; cursor: pointer;
 }
@@ -286,17 +287,24 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 /* Tonen bag tallet sættes i JS på en glidende, absolut forankret skala. */
 .hr-feels { font-size: 12.5px; color: var(--text-3); text-align: center; }
 
-.hr-precip { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.pp-track.dry { background: color-mix(in srgb, var(--line-soft) 45%, transparent); }
-.pp-text .muted { color: var(--text-3); }
+/* Banen bærer én størrelse: regnrisikoen, hvor fuld bane = 100 %.
+   Mængden står som tal med vægt efter intensitet — en anden kanal, så de to
+   ikke kan forveksles med hinanden. */
+.hr-precip { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: center; min-width: 0; }
 .pp-track {
-  position: relative; flex: 1 1 40px; min-width: 40px; height: 14px;
+  position: relative; height: 10px;
   background: var(--line-soft); border-radius: 4px; overflow: hidden;
 }
-.pp-prob { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--rain) 26%, transparent); }
-.pp-mm { position: absolute; left: 0; bottom: 0; height: 7px; background: var(--rain); border-radius: 0 4px 4px 0; }
-.pp-text { flex: none; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
-.pp-text b { color: var(--text); font-weight: 600; }
+.pp-prob { position: absolute; inset: 0 auto 0 0; background: var(--rain); opacity: .55; border-radius: 4px; }
+.pp-text {
+  font-size: 12.5px; color: var(--text-2); white-space: nowrap;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.pp-text .muted { color: var(--text-3); }
+.pp-text b { font-weight: 600; }
+.pp-text .mm-light { color: var(--text-2); }
+.pp-text .mm-mod { color: var(--rain); }
+.pp-text .mm-heavy { color: var(--rain); font-weight: 700; }
 .hr-wind { font-size: 12.5px; color: var(--text-2); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .hr-wind small { color: var(--text-3); }
 .hr-uv { font-size: 12px; color: var(--text-3); text-align: right; white-space: nowrap; }
@@ -313,12 +321,15 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .hl-cold { background: color-mix(in srgb, var(--dv-cold) 34%, transparent); }
 .hl-mid { background: color-mix(in srgb, var(--text-3) 10%, transparent); }
 .hl-warm { background: color-mix(in srgb, var(--dv-warm) 36%, transparent); }
-.hl-prob { background: color-mix(in srgb, var(--rain) 26%, transparent); }
-.hl-mm { background: var(--rain); width: 11px; height: 6px; }
+.hl-prob { background: var(--rain); opacity: .55; }
 
 @media (max-width: 620px) {
-  .hrow { grid-template-columns: 28px 24px 40px minmax(0, 1fr) 72px; gap: 8px; padding: 7px 6px; }
+  .hrow { grid-template-columns: 26px 22px 38px minmax(0, 1fr) 66px; gap: 7px; padding: 7px 5px; }
   .hr-uv, .hr-feels { display: none; }
+  /* Banen viger for tallet, så procenten aldrig klippes */
+  .hr-precip { grid-template-columns: 42px minmax(0, 1fr); gap: 8px; }
+  .hr-wind { gap: 3px; }
+  .hr-wind small { display: none; }
   .pp-text { font-size: 11.5px; }
 }
 .hour {

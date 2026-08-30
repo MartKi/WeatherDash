@@ -699,9 +699,10 @@ function smoothPath(pts) {
    Den er et kort over døgnet; detaljen ligger i listen nedenunder. */
 function renderChart(hours, day) {
   const wrapW = $("#daymap").clientWidth || 900;
-  const W = Math.max(320, wrapW), H = 104;
-  const padT = 16, padB = 30, padL = 4, padR = 4;
-  const base = H - padB;
+  const W = Math.max(320, wrapW), H = 116;
+  const padT = 16, padL = 4, padR = 4;
+  const base = 66;          // temperaturkurvens grundlinje
+  const rainTop = 72, rainH = 20, axisY = H - 6;   // nedbøren får sit eget bånd
   const temps = hours.map((h) => h.temp);
   let lo = Math.min(...temps), hi = Math.max(...temps);
   if (hi - lo < 5) { const mid = (hi + lo) / 2; lo = mid - 2.5; hi = mid + 2.5; }
@@ -717,18 +718,20 @@ function renderChart(hours, day) {
     if (!h.isDay && ns < 0) ns = i;
     if ((h.isDay || i === n - 1) && ns >= 0) {
       const x0 = x(Math.max(ns - 0.5, 0)), x1 = x(Math.min((h.isDay ? i : i + 1) - 0.5, n - 1));
-      nights.push(`<rect class="night" x="${x0.toFixed(1)}" y="0" width="${Math.max(x1 - x0, 2).toFixed(1)}" height="${base + 10}" rx="6"/>`);
+      nights.push(`<rect class="night" x="${x0.toFixed(1)}" y="0" width="${Math.max(x1 - x0, 2).toFixed(1)}" height="${base}" rx="6"/>`);
       ns = -1;
     }
   });
 
   const curve = smoothPath(hours.map((h, i) => [x(i), y(h.temp)]));
   const fill = `<path fill="url(#tempgrad)" stroke="none" d="${curve}L${x(n - 1).toFixed(1)},${base}L${x(0).toFixed(1)},${base}Z"/>`;
+  /* Nedbør som søjler på en fælles grundlinje i eget bånd — ikke svævende blokke. */
+  const baseline = `<line class="rbase" x1="${padL}" x2="${(W - padR).toFixed(1)}" y1="${rainTop + rainH}" y2="${rainTop + rainH}"/>`;
   const bars = hours.map((h, i) => {
     if (h.precip < 0.05) return "";
-    const bh = Math.max(2.5, (h.precip / maxP) * 22);
-    const w = Math.max(3, (W - padL - padR) / n * 0.55);
-    return `<rect class="pbar" x="${(x(i) - w / 2).toFixed(1)}" y="${(base + 10 - bh).toFixed(1)}" width="${w.toFixed(1)}" height="${bh.toFixed(1)}" rx="2"/>`;
+    const bh = Math.max(2, (h.precip / maxP) * rainH);
+    const w = clamp((W - padL - padR) / n * 0.42, 3, 14);
+    return `<rect class="pbar" x="${(x(i) - w / 2).toFixed(1)}" y="${(rainTop + rainH - bh).toFixed(1)}" width="${w.toFixed(1)}" height="${bh.toFixed(1)}" rx="1.5"/>`;
   }).join("");
 
   const iMax = temps.indexOf(Math.max(...temps));
@@ -739,7 +742,7 @@ function renderChart(hours, day) {
 
   /* Klokkeslæt hver sjette time, så aksen kan læses uden at fylde. */
   const ticks = hours.map((h, i) => (i === 0 || Number(h.hh.slice(0, 2)) % 6 === 0
-    ? `<text class="maxis" x="${clamp(x(i), 14, W - 14).toFixed(1)}" y="${H - 8}" text-anchor="middle">${i === 0 ? "nu" : h.hh.slice(0, 2)}</text>`
+    ? `<text class="maxis" x="${clamp(x(i), 14, W - 14).toFixed(1)}" y="${axisY}" text-anchor="middle">${i === 0 ? "nu" : h.hh.slice(0, 2)}</text>`
     : "")).join("");
 
   $("#daymap").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
@@ -748,7 +751,7 @@ function renderChart(hours, day) {
         <stop offset="0" stop-color="var(--warm)" stop-opacity=".24"/>
         <stop offset="1" stop-color="var(--warm)" stop-opacity="0"/>
       </linearGradient></defs>
-      ${nights.join("")}${fill}<path class="templine" d="${curve}"/>${bars}${marks}${ticks}</svg>`;
+      ${nights.join("")}${fill}<path class="templine" d="${curve}"/>${baseline}${bars}${marks}${ticks}</svg>`;
 
   $("#today-sub").textContent = day
     ? `${dayName(day.key)} ${dayDate(day.key)} — ${hours.length} timer. Tryk på en time for alle detaljer.`
@@ -784,26 +787,23 @@ function renderHours(hours, nowT) {
   $("#hour-detail").hidden = true;
 
   const show = Math.min(state.hoursShown || 12, hours.length);
-  const maxMM = Math.max(2, ...hours.map((h) => h.precip));
   const rows = hours.slice(0, show).map((h, i) => {
     const prob = clamp(h.prob, 0, 100);
-    /* Kvadratrod, så en let byge stadig er synlig ved siden af et skybrud. */
-    const mmW = h.precip >= 0.05 ? clamp(Math.sqrt(h.precip / maxMM) * 100, 6, 100) : 0;
-    const wet = h.precip >= 0.05 || prob >= 40;
+    const mm = h.precip;
+    /* Mængden får vægt efter hvor kraftig nedbøren er — en anden kanal end
+       banens længde, så de to størrelser ikke kan forveksles. */
+    const mmClass = mm >= 2 ? "mm-heavy" : mm >= 0.5 ? "mm-mod" : "mm-light";
+    const wet = mm >= 0.05 || prob >= 40;
     return `<button type="button" class="hrow${h.t === nowT ? " now" : ""}${h.isDay ? "" : " night"}${wet ? " wet" : ""}"
         data-i="${i}" aria-label="Detaljer for kl. ${h.hh}">
       <span class="hr-time">${h.t === nowT ? "nu" : h.hh.slice(0, 2)}</span>
       <span class="hr-icon">${weatherIcon(h.code, h.isDay)}</span>
       <span class="hr-temp" style="background:${tempTint(h.temp)}">${Math.round(h.temp)}°</span>
       <span class="hr-feels">${Math.round(h.feels)}°</span>
-      <span class="hr-precip">
-        <span class="pp-track${prob < 5 && !mmW ? " dry" : ""}">
-          <i class="pp-prob" style="width:${prob}%"></i>
-          ${mmW ? `<i class="pp-mm" style="width:${mmW.toFixed(1)}%"></i>` : ""}
-        </span>
-        <span class="pp-text">${h.precip >= 0.05 ? `<b>${fmt(h.precip)} mm</b>` : ""}${
-          h.precip >= 0.05 && prob >= 10 ? " · " : ""}${prob >= 10 ? `${Math.round(prob)} %` : ""}${
-          h.precip < 0.05 && prob < 10 ? "<span class=\"muted\">tørt</span>" : ""}</span>
+      <span class="hr-precip" title="${Math.round(prob)} % risiko for nedbør${mm >= 0.05 ? `, ventet ${fmt(mm)} mm` : ""}">
+        <span class="pp-track"><i class="pp-prob" style="width:${prob}%"></i></span>
+        <span class="pp-text">${prob >= 5 ? `${Math.round(prob)} %` : `<span class="muted">tørt</span>`}${
+          mm >= 0.05 ? ` <b class="${mmClass}">${fmt(mm)} mm</b>` : ""}</span>
       </span>
       <span class="hr-wind">${windArrow(h.wdir)}${fmt(h.wind)}<small> m/s</small></span>
       <span class="hr-uv">${h.uv >= 1 ? `UV ${fmt(h.uv)}` : ""}</span>
