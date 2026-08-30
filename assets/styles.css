@@ -324,11 +324,12 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .hl-prob { background: var(--rain); opacity: .55; }
 
 @media (max-width: 620px) {
-  .hrow { grid-template-columns: 26px 22px 38px minmax(0, 1fr) 66px; gap: 7px; padding: 7px 5px; }
+  .hrow { grid-template-columns: 24px 22px 36px minmax(0, 1fr) 54px; gap: 6px; padding: 7px 4px; }
   .hr-uv, .hr-feels { display: none; }
-  /* Banen viger for tallet, så procenten aldrig klippes */
-  .hr-precip { grid-template-columns: 42px minmax(0, 1fr); gap: 8px; }
-  .hr-wind { gap: 3px; }
+  /* Banen viger for tallet, så hverken procent eller mm klippes */
+  .hr-precip { grid-template-columns: 30px minmax(0, 1fr); gap: 6px; }
+  .pp-text { font-size: 11.5px; }
+  .hr-wind { gap: 3px; font-size: 12px; }
   .hr-wind small { display: none; }
   .pp-text { font-size: 11.5px; }
 }
