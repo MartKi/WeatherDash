@@ -800,10 +800,12 @@ function renderHours(hours, nowT) {
       <span class="hr-icon">${weatherIcon(h.code, h.isDay)}</span>
       <span class="hr-temp" style="background:${tempTint(h.temp)}">${Math.round(h.temp)}°</span>
       <span class="hr-feels">${Math.round(h.feels)}°</span>
-      <span class="hr-precip" title="${Math.round(prob)} % risiko for nedbør${mm >= 0.05 ? `, ventet ${fmt(mm)} mm` : ""}">
+      <span class="hr-precip" title="${Math.round(prob)} % risiko for nedbør — ventet mængde ${
+        mm >= 0.05 ? `${fmt(mm)} mm` : "under 0,1 mm"}. Risikoen kommer fra ensemblet, mængden fra den deterministiske model.">
         <span class="pp-track"><i class="pp-prob" style="width:${prob}%"></i></span>
         <span class="pp-text">${prob >= 5 ? `${Math.round(prob)} %` : `<span class="muted">tørt</span>`}${
-          mm >= 0.05 ? ` <b class="${mmClass}">${fmt(mm)} mm</b>` : ""}</span>
+          mm >= 0.05 ? ` <b class="${mmClass}">${fmt(mm)} mm</b>`
+            : prob >= 40 ? ` <span class="muted">&lt;0,1 mm</span>` : ""}</span>
       </span>
       <span class="hr-wind">${windArrow(h.wdir)}${fmt(h.wind)}<small> m/s</small></span>
       <span class="hr-uv">${h.uv >= 1 ? `UV ${fmt(h.uv)}` : ""}</span>
@@ -831,7 +833,7 @@ function toggleHour(i) {
   const h = state.viewHours[i];
   const rows = [
     ["Temperatur", `${Math.round(h.temp)}°`, `føles som ${Math.round(h.feels)}°`],
-    ["Nedbør", `${fmt(h.precip)} mm`, `${Math.round(h.prob)}% risiko`],
+    ["Nedbør", h.precip >= 0.05 ? `${fmt(h.precip)} mm` : "under 0,1 mm", `${Math.round(h.prob)} % risiko`],
     ["Vind", `${fmt(h.wind)} m/s fra ${dir(h.wdir)}`, `${windWord(h.wind)} · stød ${fmt(h.gust)} m/s`],
     ["UV-indeks", fmt(h.uv), h.uv >= 6 ? "brug solcreme" : h.uv >= 3 ? "moderat" : "lavt"],
     ["Luftfugtighed", `${Math.round(h.rh)}%`, `skydække ${Math.round(h.cloud)}%`],
