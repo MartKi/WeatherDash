@@ -19,7 +19,7 @@
   --ok: #d19a12;
   --bad: #d4503c;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
-  --dv-cold: #2a78d6; --dv-warm: #e34948;
+  --dv-cold: #2a78d6; --dv-warm: #e34948; --dv-mid: #8b8f96;
   --shadow: 0 1px 2px rgba(16,28,50,.06), 0 8px 24px -12px rgba(16,28,50,.18);
   --radius: 16px;
   --maxw: 1180px;
@@ -55,7 +55,7 @@
   --warm: #ffa94d; --hot: #ff7a5c; --cold: #63b8f5; --rain: #6ea0ff;
   --good: #45c98a; --ok: #f2c14e; --bad: #ff7a68;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-  --dv-cold: #3987e5; --dv-warm: #e66767;
+  --dv-cold: #3987e5; --dv-warm: #e66767; --dv-mid: #8d97a8;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -24px rgba(0,0,0,.8);
 }
 
@@ -255,13 +255,14 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .daymap { margin-bottom: 6px; }
 .daymap svg { display: block; width: 100%; height: auto; overflow: visible; }
 .daymap .night { fill: color-mix(in srgb, var(--text-3) 9%, transparent); stroke: none; }
-.daymap .templine { stroke: var(--warm); stroke-width: 2.2; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.daymap .templine { stroke-width: 2.4; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 .daymap .pbar { fill: var(--rain); stroke: none; opacity: .8; }
 .daymap .rbase { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .daymap text { stroke: none; }
 .daymap .val { fill: var(--text); font-size: 12px; font-weight: 650; }
 .daymap .maxis { fill: var(--text-3); font-size: 11px; }
-.daymap .vdot { fill: var(--warm); stroke: var(--surface); stroke-width: 1.5; }
+.daymap .vdot { stroke: var(--surface); stroke-width: 1.5; }
+.daymap .nightlab { fill: var(--text-3); font-size: 11px; }
 
 /* Én række pr. time */
 .hourlist { display: grid; gap: 2px; }

@@ -675,6 +675,15 @@ function renderPlan(d) {
    Farven er en tone bag tallet, aldrig tallets egen farve, så kontrasten er sikker. */
 const TEMP_MID = 15;    // neutralt midtpunkt: behageligt
 const TEMP_SPAN = 14;   // ±14° til fuld tone
+/* Fuld farve på samme skala som rækkernes tone, men med kortere spænd og en let
+   kurve: på en tone bag et tal må afdæmpet gerne betyde mildt, men på en linje er
+   farven det eneste signal, og dansk vejr ligger sjældent i yderpunkterne. */
+function tempColor(t) {
+  const f = clamp((t - TEMP_MID) / 11, -1, 1);
+  const pct = Math.round(Math.pow(Math.abs(f), 0.72) * 100);
+  return `color-mix(in srgb, var(--dv-${f < 0 ? "cold" : "warm"}) ${pct}%, var(--dv-mid))`;
+}
+
 function tempTint(t) {
   const f = clamp((t - TEMP_MID) / TEMP_SPAN, -1, 1);
   const pct = Math.round(Math.abs(f) * 34);
@@ -712,19 +721,33 @@ function renderChart(hours, day) {
   const y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (base - padT);
   const maxP = Math.max(1.5, ...hours.map((h) => h.precip));
 
+  /* Natbåndet forklarer sig selv: "Nat" og tidsrummet skrives i feltet,
+     så man ikke skal gætte hvad den grå blok betyder. */
+  const dayOf = (key) => (state.data ? state.data.days.find((d) => d.key === key) : null);
   const nights = [];
   let ns = -1;
   hours.forEach((h, i) => {
     if (!h.isDay && ns < 0) ns = i;
     if ((h.isDay || i === n - 1) && ns >= 0) {
-      const x0 = x(Math.max(ns - 0.5, 0)), x1 = x(Math.min((h.isDay ? i : i + 1) - 0.5, n - 1));
-      nights.push(`<rect class="night" x="${x0.toFixed(1)}" y="0" width="${Math.max(x1 - x0, 2).toFixed(1)}" height="${base}" rx="6"/>`);
+      const endI = h.isDay ? i : i + 1;
+      const x0 = x(Math.max(ns - 0.5, 0)), x1 = x(Math.min(endI - 0.5, n - 1));
+      const w = Math.max(x1 - x0, 2);
+      nights.push(`<rect class="night" x="${x0.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="${base}" rx="6"/>`);
+      const set = dayOf(hours[ns].key), rise = dayOf(hours[Math.min(endI, n - 1)].key);
+      const label = w >= 150 && set && rise
+        ? `Nat · ${hhmm(set.sunset)}–${hhmm(rise.sunrise)}`
+        : w >= 46 ? "Nat" : "";
+      if (label) nights.push(`<text class="nightlab" x="${(x0 + w / 2).toFixed(1)}" y="14" text-anchor="middle">${esc(label)}</text>`);
       ns = -1;
     }
   });
 
   const curve = smoothPath(hours.map((h, i) => [x(i), y(h.temp)]));
-  const fill = `<path fill="url(#tempgrad)" stroke="none" d="${curve}L${x(n - 1).toFixed(1)},${base}L${x(0).toFixed(1)},${base}Z"/>`;
+  const area = `${curve}L${x(n - 1).toFixed(1)},${base}L${x(0).toFixed(1)},${base}Z`;
+  /* Ét stop pr. time: linjen skifter farve med temperaturen i stedet for at
+     være ensfarvet hele vejen. */
+  const stops = hours.map((h, i) =>
+    `<stop offset="${((i / (n - 1)) * 100).toFixed(2)}%" stop-color="${tempColor(h.temp)}"/>`).join("");
   /* Nedbør som søjler på en fælles grundlinje i eget bånd — ikke svævende blokke. */
   const baseline = `<line class="rbase" x1="${padL}" x2="${(W - padR).toFixed(1)}" y1="${rainTop + rainH}" y2="${rainTop + rainH}"/>`;
   const bars = hours.map((h, i) => {
@@ -737,7 +760,7 @@ function renderChart(hours, day) {
   const iMax = temps.indexOf(Math.max(...temps));
   const iMin = temps.indexOf(Math.min(...temps));
   const marks = [...new Set([iMax, iMin])].map((i) =>
-    `<circle class="vdot" cx="${x(i).toFixed(1)}" cy="${y(temps[i]).toFixed(1)}" r="3"/>` +
+    `<circle class="vdot" cx="${x(i).toFixed(1)}" cy="${y(temps[i]).toFixed(1)}" r="3" style="fill:${tempColor(temps[i])}"/>` +
     `<text class="val" x="${clamp(x(i), 16, W - 16).toFixed(1)}" y="${(y(temps[i]) - 9).toFixed(1)}" text-anchor="middle">${Math.round(temps[i])}°</text>`).join("");
 
   /* Klokkeslæt hver sjette time, så aksen kan læses uden at fylde. */
@@ -747,11 +770,20 @@ function renderChart(hours, day) {
 
   $("#daymap").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
       aria-label="Temperatur og nedbør de næste ${n} timer">
-      <defs><linearGradient id="tempgrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="var(--warm)" stop-opacity=".24"/>
-        <stop offset="1" stop-color="var(--warm)" stop-opacity="0"/>
-      </linearGradient></defs>
-      ${nights.join("")}${fill}<path class="templine" d="${curve}"/>${baseline}${bars}${marks}${ticks}</svg>`;
+      <defs>
+        <linearGradient id="tline" gradientUnits="userSpaceOnUse" x1="${x(0).toFixed(1)}" y1="0" x2="${x(n - 1).toFixed(1)}" y2="0">${stops}</linearGradient>
+        <linearGradient id="tfade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fff" stop-opacity=".42"/>
+          <stop offset="0.85" stop-color="#fff" stop-opacity="0"/>
+          <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+        </linearGradient>
+        <!-- Masken går et stykke under fyldets underkant, så de to kanter ikke
+             falder sammen og efterlader en antialiasing-streg. -->
+        <mask id="tmask"><rect x="0" y="0" width="${W}" height="${base + 12}" fill="url(#tfade)"/></mask>
+      </defs>
+      ${nights.join("")}
+      <g mask="url(#tmask)"><path d="${area}" fill="url(#tline)" stroke="none"/></g>
+      <path class="templine" style="stroke:url(#tline)" d="${curve}"/>${baseline}${bars}${marks}${ticks}</svg>`;
 
   $("#today-sub").textContent = day
     ? `${dayName(day.key)} ${dayDate(day.key)} — ${hours.length} timer. Tryk på en time for alle detaljer.`
