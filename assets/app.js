@@ -800,6 +800,7 @@ function renderHours(hours, nowT) {
       <span class="hr-icon">${weatherIcon(h.code, h.isDay)}</span>
       <span class="hr-temp" style="background:${tempTint(h.temp)}">${Math.round(h.temp)}°</span>
       <span class="hr-feels">${Math.round(h.feels)}°</span>
+      <span class="hr-desc">${esc(codeText(h.code))}</span>
       <span class="hr-precip" title="${Math.round(prob)} % risiko for nedbør — ventet mængde ${
         mm >= 0.05 ? `${fmt(mm)} mm` : "under 0,1 mm"}. Risikoen kommer fra ensemblet, mængden fra den deterministiske model.">
         <span class="pp-track"><i class="pp-prob" style="width:${prob}%"></i></span>
@@ -807,7 +808,8 @@ function renderHours(hours, nowT) {
           mm >= 0.05 ? ` <b class="${mmClass}">${fmt(mm)} mm</b>`
             : prob >= 40 ? ` <span class="muted">&lt;0,1 mm</span>` : ""}</span>
       </span>
-      <span class="hr-wind">${windArrow(h.wdir)}${fmt(h.wind)}<small> m/s</small></span>
+      <span class="hr-wind">${windArrow(h.wdir)}${fmt(h.wind)}<small> m/s</small>${
+        h.gust >= h.wind + 3 ? `<small class="gust"> · stød ${fmt(h.gust)}</small>` : ""}</span>
       <span class="hr-uv">${h.uv >= 1 ? `UV ${fmt(h.uv)}` : ""}</span>
     </button>`;
   }).join("");
