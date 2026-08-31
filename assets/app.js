@@ -671,28 +671,52 @@ function renderPlan(d) {
 }
 
 /* SVG-graf: temperatur, føles-som og nedbør. */
-/* Temperaturbånd på en divergerende skala: kold blå → neutral → varm rød.
-   Farven er en tone bag tallet, aldrig tallets egen farve, så kontrasten er sikker. */
-const TEMP_MID = 15;    // neutralt midtpunkt: behageligt
-const TEMP_SPAN = 14;   // ±14° til fuld tone
-/* Fuld farve på samme skala som rækkernes tone, men med kortere spænd og en let
-   kurve: på en tone bag et tal må afdæmpet gerne betyde mildt, men på en linje er
-   farven det eneste signal, og dansk vejr ligger sjældent i yderpunkterne. */
-/* Kun et smalt bånd omkring midtpunktet er neutralt; derfra når farven polen
-   hurtigt. En blød overgang mod grå gjorde hele det danske temperaturspænd
-   gråligt, fordi typiske døgn ligger tæt på midten. */
-function tempColor(t) {
-  const f = clamp((t - TEMP_MID) / 8, -1, 1);
-  const pct = Math.round(Math.pow(Math.abs(f), 0.38) * 100);
-  return `color-mix(in srgb, var(--dv-${f < 0 ? "cold" : "warm"}) ${pct}%, var(--dv-mid))`;
+/* Temperaturens farve: en tone bag tallet, aldrig tallets egen farve, så
+   kontrasten er sikker. Skalaen er forankret i, hvordan graderne opleves i
+   Danmark — ikke i et symmetrisk spænd om et midtpunkt: fra 15 til 19° er tonen
+   neutral, varmen kommer først som gul omkring 22° og som orange/rød midt i
+   20'erne. Rampen har rigtige farvetrin (blå → neutral → gul → orange → rød)
+   frem for én blanding mod grå: en ren to-polet skala bliver mudret netop i det
+   spænd, hvor de fleste danske timer ligger. Mellem trinnene blandes lineært, så
+   hver grad flytter farven, og tonens styrke følger samme forankringer. */
+const TEMP_STOPS = [
+  [-10, "--tc1", 0.62], [0, "--tc2", 0.50], [8, "--tc3", 0.32],
+  [15, "--tc4", 0.14], [19, "--tc4", 0.14],
+  [22, "--tc5", 0.32], [26, "--tc6", 0.46], [31, "--tc7", 0.62],
+];
+
+/* Grader → { farve, styrke } ved at blande de to nærmeste trin. */
+function tempStep(t) {
+  const s = TEMP_STOPS;
+  if (t <= s[0][0]) return { color: `var(${s[0][1]})`, a: s[0][2] };
+  for (let i = 1; i < s.length; i++) {
+    if (t <= s[i][0]) {
+      const [t0, c0, a0] = s[i - 1], [t1, c1, a1] = s[i];
+      const k = (t - t0) / (t1 - t0);
+      return {
+        /* oklab frem for srgb: overgangen grå → gul går udenom den olivengrå
+           midtvej, srgb-blanding lægger den i. */
+        color: `color-mix(in oklab, var(${c1}) ${Math.round(k * 100)}%, var(${c0}))`,
+        a: a0 + (a1 - a0) * k,
+      };
+    }
+  }
+  const last = s[s.length - 1];
+  return { color: `var(${last[1]})`, a: last[2] };
 }
 
-/* Tonen bag temperaturtallet: samme skala, men som lys flade bag mørk tekst. */
+/* Fuld farve til kurven i grafen. */
+function tempColor(t) {
+  return tempStep(t).color;
+}
+
+/* Tonen bag temperaturtallet. Farven og styrken sættes som variabler, så CSS kan
+   bruge dem forskelligt i de to temaer: på hvid bund er en let flade bag mørk
+   tekst tydeligst, mens den samme flade på mørk bund bliver brunlig — der er en
+   svag flade med farvet tekst både renere og mere kontrastrig. */
 function tempTint(t) {
-  const f = clamp((t - TEMP_MID) / 8, -1, 1);
-  if (Math.abs(f) < 0.05) return "color-mix(in srgb, var(--text-3) 12%, transparent)";
-  const pct = Math.round(18 + Math.pow(Math.abs(f), 0.7) * 52);
-  return `color-mix(in srgb, var(--dv-${f < 0 ? "cold" : "warm"}) ${pct}%, transparent)`;
+  const { color, a } = tempStep(t);
+  return `--tc:${color};--ta:${Math.round(a * 100)}%`;
 }
 
 /* Glat kurve gennem punkterne — Catmull-Rom omsat til kubiske bezier-segmenter. */
@@ -834,7 +858,7 @@ function renderHours(hours, nowT) {
         data-i="${i}" aria-label="Detaljer for kl. ${h.hh}">
       <span class="hr-time">${h.t === nowT ? "nu" : h.hh.slice(0, 2)}</span>
       <span class="hr-icon">${weatherIcon(h.code, h.isDay)}</span>
-      <span class="hr-temp" style="background:${tempTint(h.temp)}">${Math.round(h.temp)}°</span>
+      <span class="hr-temp" style="${tempTint(h.temp)}">${Math.round(h.temp)}°</span>
       <span class="hr-feels">${Math.round(h.feels)}°</span>
       <span class="hr-desc">${esc(codeText(h.code))}</span>
       <span class="hr-precip" title="${Math.round(prob)} % risiko for nedbør — ventet mængde ${
