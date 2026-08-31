@@ -678,16 +678,20 @@ const TEMP_SPAN = 14;   // ±14° til fuld tone
 /* Fuld farve på samme skala som rækkernes tone, men med kortere spænd og en let
    kurve: på en tone bag et tal må afdæmpet gerne betyde mildt, men på en linje er
    farven det eneste signal, og dansk vejr ligger sjældent i yderpunkterne. */
+/* Kun et smalt bånd omkring midtpunktet er neutralt; derfra når farven polen
+   hurtigt. En blød overgang mod grå gjorde hele det danske temperaturspænd
+   gråligt, fordi typiske døgn ligger tæt på midten. */
 function tempColor(t) {
-  const f = clamp((t - TEMP_MID) / 11, -1, 1);
-  const pct = Math.round(Math.pow(Math.abs(f), 0.72) * 100);
+  const f = clamp((t - TEMP_MID) / 8, -1, 1);
+  const pct = Math.round(Math.pow(Math.abs(f), 0.38) * 100);
   return `color-mix(in srgb, var(--dv-${f < 0 ? "cold" : "warm"}) ${pct}%, var(--dv-mid))`;
 }
 
+/* Tonen bag temperaturtallet: samme skala, men som lys flade bag mørk tekst. */
 function tempTint(t) {
-  const f = clamp((t - TEMP_MID) / TEMP_SPAN, -1, 1);
-  const pct = Math.round(Math.abs(f) * 34);
-  if (pct < 3) return "color-mix(in srgb, var(--text-3) 9%, transparent)";
+  const f = clamp((t - TEMP_MID) / 8, -1, 1);
+  if (Math.abs(f) < 0.05) return "color-mix(in srgb, var(--text-3) 12%, transparent)";
+  const pct = Math.round(18 + Math.pow(Math.abs(f), 0.7) * 52);
   return `color-mix(in srgb, var(--dv-${f < 0 ? "cold" : "warm"}) ${pct}%, transparent)`;
 }
 
