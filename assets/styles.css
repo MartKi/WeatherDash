@@ -255,7 +255,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .daymap { margin-bottom: 6px; }
 .daymap svg { display: block; width: 100%; height: auto; overflow: visible; }
 .daymap .night { fill: color-mix(in srgb, var(--text-3) 9%, transparent); stroke: none; }
-.daymap .templine { stroke-width: 2.4; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.daymap .templine { stroke-width: 3; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 .daymap .pbar { fill: var(--rain); stroke: none; opacity: .8; }
 .daymap .rbase { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .daymap text { stroke: none; }
@@ -297,7 +297,10 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
    ikke kan forveksles med hinanden. */
 /* Banen tager rækkens overskydende bredde: en længere bane er lettere at aflæse,
    og tallet sidder i højre kant, så der ikke opstår et hul midt i rækken. */
-.hr-precip { display: grid; grid-template-columns: minmax(70px, 1fr) auto; gap: 12px; align-items: center; min-width: 0; }
+/* Tekstkolonnen har fast bredde, så banen bliver præcis lige lang i alle rækker.
+   Med auto-bredde skubbede en lang tekst banen kortere, og længderne kunne
+   dermed ikke sammenlignes fra time til time. */
+.hr-precip { display: grid; grid-template-columns: minmax(70px, 1fr) 106px; gap: 12px; align-items: center; min-width: 0; }
 .pp-track {
   position: relative; height: 10px;
   background: var(--line-soft); border-radius: 4px; overflow: hidden;
@@ -326,9 +329,9 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .hours-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-3); }
 .hl { display: inline-flex; align-items: center; gap: 5px; }
 .hl i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
-.hl-cold { background: color-mix(in srgb, var(--dv-cold) 34%, transparent); }
+.hl-cold { background: color-mix(in srgb, var(--dv-cold) 62%, transparent); }
 .hl-mid { background: color-mix(in srgb, var(--text-3) 10%, transparent); }
-.hl-warm { background: color-mix(in srgb, var(--dv-warm) 36%, transparent); }
+.hl-warm { background: color-mix(in srgb, var(--dv-warm) 62%, transparent); }
 .hl-prob { background: var(--rain); opacity: .55; }
 
 @media (max-width: 620px) {
@@ -336,7 +339,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
   .hr-uv, .hr-feels, .hr-desc { display: none; }
   .hr-wind .gust { display: none; }
   /* Banen viger for tallet, så hverken procent eller mm klippes */
-  .hr-precip { grid-template-columns: minmax(28px, 1fr) auto; gap: 6px; }
+  .hr-precip { grid-template-columns: minmax(28px, 1fr) 88px; gap: 6px; }
   .pp-text { font-size: 11.5px; }
   .hr-wind { gap: 3px; font-size: 12px; }
   .hr-wind small { display: none; }
