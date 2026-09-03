@@ -26,8 +26,12 @@
      derfra går rampen gennem dæmpet blågrøn og grågrøn, så 12-16° har sin egen
      graduering uden at se kold ud. Lysheden er valgt, så hvert trin klarer
      3:1 mod fladen bagved. */
-  --tc1: #19418f; --tc2: #286eb8; --tc3: #4797c2; --tc4: #599197; --tc5: #5b865b;
-  --tc6: #938b6c; --tc7: #ae8c29; --tc8: #d36f1d; --tc9: #ce3527;
+  --tc1: #2f5ad6; --tc2: #2e86e0; --tc3: #22a5e0; --tc4: #12b5ae; --tc5: #2fbe78;
+  --tc6: #a2c92f; --tc7: #f2c024; --tc8: #f58a1f; --tc9: #ea4436;
+  /* Kurven får en mørk kant under sig, så farverne kan være friske og klare og
+     stadig have kontrast nok til fladen. Dæmpede farver var det andet svar på
+     det krav — og de så ud som camouflage. */
+  --case: #22344a;
   --shadow: 0 1px 2px rgba(16,28,50,.06), 0 8px 24px -12px rgba(16,28,50,.18);
   --radius: 16px;
   --maxw: 1180px;
@@ -56,8 +60,10 @@
        kun under [data-theme="dark"] — ellers får systemets mørke tilstand de
        lyse toner, som er for mættede på en mørk flade. */
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-    --tc1: #2f68da; --tc2: #478cd7; --tc3: #66a8cc; --tc4: #78aab0; --tc5: #73a073;
-    --tc6: #ada790; --tc7: #d4b249; --tc8: #e4863a; --tc9: #e0675c;
+    --tc1: #4a77f0; --tc2: #4b9bf0; --tc3: #3cb6ee; --tc4: #2fcac2; --tc5: #48d68c;
+    --tc6: #b6dd45; --tc7: #ffd34d; --tc8: #ff9f3d; --tc9: #ff6a55;
+    /* På mørk bund bærer farverne selv kontrasten; ingen kant nødvendig. */
+    --case: transparent;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -24px rgba(0,0,0,.8);
   }
 }
@@ -69,8 +75,9 @@
   --warm: #ffa94d; --hot: #ff7a5c; --cold: #63b8f5; --rain: #6ea0ff;
   --good: #45c98a; --ok: #f2c14e; --bad: #ff7a68;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-  --tc1: #2f68da; --tc2: #478cd7; --tc3: #66a8cc; --tc4: #78aab0; --tc5: #73a073;
-  --tc6: #ada790; --tc7: #d4b249; --tc8: #e4863a; --tc9: #e0675c;
+  --tc1: #4a77f0; --tc2: #4b9bf0; --tc3: #3cb6ee; --tc4: #2fcac2; --tc5: #48d68c;
+  --tc6: #b6dd45; --tc7: #ffd34d; --tc8: #ff9f3d; --tc9: #ff6a55;
+  --case: transparent;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -24px rgba(0,0,0,.8);
 }
 
@@ -270,7 +277,14 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .daymap { margin-bottom: 6px; }
 .daymap svg { display: block; width: 100%; height: auto; overflow: visible; }
 .daymap .night { fill: color-mix(in srgb, var(--text-3) 9%, transparent); stroke: none; }
-.daymap .templine { stroke-width: 3; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.daymap .templine { stroke-width: 3.4; fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+/* Kanten ligger under kurven og stikker 0,6 px ud i hver side. Den giver formen
+   kontrast mod fladen (3,10:1 ved denne opacity), så selve farven må være så
+   frisk, den skal være — kravet hviler på kanten, ikke på farven. */
+.daymap .templine-case {
+  stroke: var(--case); stroke-width: 4.6; fill: none; opacity: .55;
+  vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round;
+}
 .daymap .pbar { fill: var(--rain); stroke: none; opacity: .8; }
 .daymap .rbase { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .daymap text { stroke: none; }
