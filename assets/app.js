@@ -819,7 +819,7 @@ function renderChart(hours, day) {
       </defs>
       ${nights.join("")}
       <g mask="url(#tmask)"><path d="${area}" fill="url(#tline)" stroke="none"/></g>
-      <path class="templine" style="stroke:url(#tline)" d="${curve}"/>${baseline}${bars}${marks}${ticks}</svg>`;
+      <path class="templine-case" d="${curve}"/><path class="templine" style="stroke:url(#tline)" d="${curve}"/>${baseline}${bars}${marks}${ticks}</svg>`;
 
   $("#today-sub").textContent = day
     ? `${dayName(day.key)} ${dayDate(day.key)} — ${hours.length} timer. Tryk på en time for alle detaljer.`
