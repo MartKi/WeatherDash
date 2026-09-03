@@ -673,16 +673,24 @@ function renderPlan(d) {
 /* SVG-graf: temperatur, føles-som og nedbør. */
 /* Temperaturens farve: en tone bag tallet, aldrig tallets egen farve, så
    kontrasten er sikker. Skalaen er forankret i, hvordan graderne opleves i
-   Danmark — ikke i et symmetrisk spænd om et midtpunkt: fra 15 til 19° er tonen
-   neutral, varmen kommer først som gul omkring 22° og som orange/rød midt i
-   20'erne. Rampen har rigtige farvetrin (blå → neutral → gul → orange → rød)
-   frem for én blanding mod grå: en ren to-polet skala bliver mudret netop i det
-   spænd, hvor de fleste danske timer ligger. Mellem trinnene blandes lineært, så
-   hver grad flytter farven, og tonens styrke følger samme forankringer. */
+   Danmark — ikke i et symmetrisk spænd om et midtpunkt. Blå er forbeholdt frost
+   og de kolde grader op til ca. 9°; 12-16° er ikke koldt og skal derfor ikke se
+   blåt ud, men får sin egen graduering gennem dæmpet blågrøn og grågrøn.
+   Varmen kommer som gul omkring 22° og som orange/rød først midt i 20'erne.
+   Ni trin frem for én blanding mod grå: en to-polet skala går gennem grå og
+   bliver mudret netop i det spænd, hvor de fleste danske timer ligger, og den
+   kan ikke skelne 12° fra 16°. Mellem trinnene blandes lineært i oklab, så hver
+   grad flytter farven, og tonens styrke følger samme forankringer. */
 const TEMP_STOPS = [
-  [-10, "--tc1", 0.62], [0, "--tc2", 0.50], [8, "--tc3", 0.32],
-  [15, "--tc4", 0.14], [19, "--tc4", 0.14],
-  [22, "--tc5", 0.32], [26, "--tc6", 0.46], [31, "--tc7", 0.62],
+  [-12, "--tc1", 0.62],   // hård frost
+  [-1,  "--tc2", 0.58],   // frost
+  [5,   "--tc3", 0.52],   // koldt — sidste rene blå
+  [9,   "--tc4", 0.47],   // friskt
+  [13,  "--tc5", 0.45],   // mildt
+  [18,  "--tc6", 0.43],   // behageligt
+  [22,  "--tc7", 0.48],   // lunt
+  [26,  "--tc8", 0.55],   // varmt
+  [31,  "--tc9", 0.62],   // hedt
 ];
 
 /* Grader → { farve, styrke } ved at blande de to nærmeste trin. */

@@ -21,8 +21,13 @@
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
   /* Temperaturrampe med rigtige farvetrin frem for én blanding mod grå: en ren
      to-polet skala bliver mudret i midten, hvor de fleste danske timer ligger. */
-  --tc1: #14509f; --tc2: #2a78d6; --tc3: #6697c9; --tc4: #8c94a0;
-  --tc5: #b78c25; --tc6: #e07626; --tc7: #d93b2b;
+  /* Ni trin, ét pr. oplevelse: frost, koldt, friskt, mildt, behageligt, lunt,
+     varmt, hedt. Blå er forbeholdt frost og de kolde grader op til ca. 9°;
+     derfra går rampen gennem dæmpet blågrøn og grågrøn, så 12-16° har sin egen
+     graduering uden at se kold ud. Lysheden er valgt, så hvert trin klarer
+     3:1 mod fladen bagved. */
+  --tc1: #19418f; --tc2: #286eb8; --tc3: #4797c2; --tc4: #599197; --tc5: #5b865b;
+  --tc6: #938b6c; --tc7: #ae8c29; --tc8: #d36f1d; --tc9: #ce3527;
   --shadow: 0 1px 2px rgba(16,28,50,.06), 0 8px 24px -12px rgba(16,28,50,.18);
   --radius: 16px;
   --maxw: 1180px;
@@ -51,8 +56,8 @@
        kun under [data-theme="dark"] — ellers får systemets mørke tilstand de
        lyse toner, som er for mættede på en mørk flade. */
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-    --tc1: #2b6ac9; --tc2: #3987e5; --tc3: #7cbcf5; --tc4: #93a0b5;
-    --tc5: #f2c14e; --tc6: #ffa94d; --tc7: #ff7a5c;
+    --tc1: #2f68da; --tc2: #478cd7; --tc3: #66a8cc; --tc4: #78aab0; --tc5: #73a073;
+    --tc6: #ada790; --tc7: #d4b249; --tc8: #e4863a; --tc9: #e0675c;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -24px rgba(0,0,0,.8);
   }
 }
@@ -64,8 +69,8 @@
   --warm: #ffa94d; --hot: #ff7a5c; --cold: #63b8f5; --rain: #6ea0ff;
   --good: #45c98a; --ok: #f2c14e; --bad: #ff7a68;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
-  --tc1: #2b6ac9; --tc2: #3987e5; --tc3: #7cbcf5; --tc4: #93a0b5;
-  --tc5: #f2c14e; --tc6: #ffa94d; --tc7: #ff7a5c;
+  --tc1: #2f68da; --tc2: #478cd7; --tc3: #66a8cc; --tc4: #78aab0; --tc5: #73a073;
+  --tc6: #ada790; --tc7: #d4b249; --tc8: #e4863a; --tc9: #e0675c;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 16px 40px -24px rgba(0,0,0,.8);
 }
 
@@ -357,7 +362,7 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
    er selve pointen, og bånd viser den bedre end enkeltfarver. */
 .hl .hl-scale {
   width: 56px; border-radius: 3px;
-  background: linear-gradient(90deg, var(--tc2), var(--tc3), var(--tc4), var(--tc5), var(--tc6), var(--tc7));
+  background: linear-gradient(90deg, var(--tc1), var(--tc2), var(--tc3), var(--tc4), var(--tc5), var(--tc6), var(--tc7), var(--tc8), var(--tc9));
 }
 .hl-prob { background: var(--rain); opacity: .55; }
 
