@@ -12,7 +12,6 @@
   --accent: #2f6df0;
   --accent-soft: #e6eeff;
   --warm: #f0932b;
-  --hot: #e2513b;
   --cold: #3aa0e0;
   --rain: #4f8ff7;
   --good: #1f9d63;
@@ -50,7 +49,6 @@
     --accent: #6ea0ff;
     --accent-soft: #1a2740;
     --warm: #ffa94d;
-    --hot: #ff7a5c;
     --cold: #63b8f5;
     --rain: #6ea0ff;
     --good: #45c98a;
@@ -72,7 +70,7 @@
   --line: #253143; --line-soft: #1d2735;
   --text: #eaf0fa; --text-2: #9fb0ca; --text-3: #71829e;
   --accent: #6ea0ff; --accent-soft: #1a2740;
-  --warm: #ffa94d; --hot: #ff7a5c; --cold: #63b8f5; --rain: #6ea0ff;
+  --warm: #ffa94d; --cold: #63b8f5; --rain: #6ea0ff;
   --good: #45c98a; --ok: #f2c14e; --bad: #ff7a68;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --tc1: #4a77f0; --tc2: #4b9bf0; --tc3: #3cb6ee; --tc4: #2fcac2; --tc5: #48d68c;
@@ -380,6 +378,15 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 }
 .hl-prob { background: var(--rain); opacity: .55; }
 
+/* Mellemtrin: den fulde timerække kræver 780 px og gav vandret scroll fra 621 px
+   og op til ca. 820 — tablets i portræt og delt skærm. Her beholder rækken sin
+   tekst, men UV og vindstød viger, og de faste kolonner er trimmet. */
+@media (max-width: 860px) and (min-width: 621px) {
+  .hrow { grid-template-columns: 30px 24px 42px 38px minmax(0, 1fr) minmax(150px, 1.2fr) 104px; gap: 8px; }
+  .hr-uv, .hr-wind .gust { display: none; }
+  .hr-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hr-precip { grid-template-columns: minmax(50px, 1fr) 96px; gap: 8px; }
+}
 @media (max-width: 620px) {
   .hrow { grid-template-columns: 24px 22px 36px minmax(0, 1fr) 54px; gap: 6px; padding: 7px 4px; }
   .hr-uv, .hr-feels, .hr-desc { display: none; }
@@ -623,8 +630,6 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 .win { display: grid; grid-template-columns: 128px 1fr; gap: 14px; align-items: center; font-size: 13px; }
 .win .when { font-weight: 600; }
 .win .why { color: var(--text-2); }
-.win .strip { display: flex; gap: 2px; height: 26px; }
-.win .seg { flex: 1; border-radius: 3px; }
 .hourbar { display: flex; gap: 2px; }
 .hourbar .cell { flex: 1; min-width: 0; }
 .hourbar .cell i { display: block; height: 26px; border-radius: 3px; }
@@ -637,7 +642,9 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; gap: 18px; }
-  .day { grid-template-columns: 78px 30px 1fr 66px; grid-template-areas: "n i r c"; row-gap: 6px; }
+  /* Chip-kolonnen må følge sit indhold: tre chips fylder 88 px (3×26 + 2×5), og
+     en fast 66 px-kolonne lod dem stikke ud af rækken og give vandret scroll. */
+  .day { grid-template-columns: 78px 30px 1fr auto; grid-template-areas: "n i r c"; row-gap: 6px; }
   .day .dcol-name { grid-area: n; } .day .wicon { grid-area: i; } .day .range { grid-area: r; } .day .chips { grid-area: c; }
   .day .meta, .day .uv { display: none; }
   .pday { grid-template-columns: 1fr; gap: 7px; }
@@ -645,6 +652,14 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 22px 20px 60px; }
   .win { grid-template-columns: 1fr; gap: 6px; }
 }
 @media (max-width: 560px) {
+  /* Navn, ikon og chips på første linje, temperaturbanen på sin egen nedenunder.
+     På én linje krævede rækken 402 px og gav vandret scroll på hver eneste telefon;
+     banen bliver samtidig længere og dermed lettere at aflæse. */
+  .day {
+    grid-template-columns: 1fr 30px auto;
+    grid-template-areas: "n i c" "r r r";
+    gap: 8px 10px;
+  }
   .hero-stats { grid-template-columns: repeat(2, 1fr); }
   main { padding: 18px 14px 48px; }
   .topbar-inner { padding: 10px 14px; gap: 10px; }

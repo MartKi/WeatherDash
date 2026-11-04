@@ -887,6 +887,30 @@ function renderHours(hours, nowT) {
   const more = $("#hours-more");
   more.hidden = hours.length <= 12;
   more.textContent = show >= hours.length ? "Vis færre timer" : `Vis alle ${hours.length} timer`;
+
+  hoursChip(hours);
+}
+
+/* Chippen sammenfatter hele vinduet — ikke kun de viste timer — så den ikke
+   skifter, når man folder listen ud. Samme "våd time"-grænse som rækkerne selv
+   bruger, så overskriften ikke kan sige tørt om en række med blå kant. */
+function hoursChip(hours) {
+  if (!hours.length) return setChip("#chip-today", "", "");
+  const temps = hours.map((h) => h.temp);
+  const span = `${Math.round(Math.min(...temps))}–${Math.round(Math.max(...temps))}°`;
+  const wet = hours.filter((h) => h.precip >= 0.05 || h.prob >= 40);
+  if (!wet.length) return setChip("#chip-today", `${span} · tørt`, "");
+
+  /* Ét sammenhængende stræk kan nævnes med klokkeslæt; flere spredte kan kun
+     tælles, for "kl. 7–22" ville love regn i hele mellemrummet. */
+  const first = hours.indexOf(wet[0]);
+  const last = hours.indexOf(wet[wet.length - 1]);
+  const sammenhængende = last - first + 1 === wet.length;
+  const mm = wet.reduce((a, h) => a + h.precip, 0);
+  const tekst = sammenhængende
+    ? `nedbør kl. ${wet[0].hh.slice(0, 2)}–${wet[wet.length - 1].hh.slice(0, 2)}`
+    : `${wet.length} timer med nedbør`;
+  setChip("#chip-today", `${span} · ${tekst}${mm >= 0.1 ? ` · ${fmt(mm)} mm` : ""}`, "");
 }
 
 /* Detaljepanel under timelisten — erstatter hover-tooltips, som ikke findes på mobil. */
