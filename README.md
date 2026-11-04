@@ -97,6 +97,10 @@ vindstød ≥ 14 m/s og kraftig nedbør ≥ 15 mm.
 
 Det separate kald er bevidst adskilt fra hovedkaldet: et ukendt variabelnavn ville ellers give 400 på hele luftafsnittet i stedet for blot at falde tilbage på tabellen. Pollen måles i korn pr. m³ og inddeles i fire trin pr. art, fordi arterne har vidt forskellige niveauer: træpollen (el, birk) ved 1/10/50/500, græs ved 1/5/20/200 og urter (bynke, ambrosia) ved 1/5/20/100. Trinene er de gængse europæiske grænser og er omtrentlige — de er ikke en klinisk skala, og din egen tærskel kender du bedst. Arter uden for sæson nævnes samlet i stedet for at fylde med nuller. Er luften eller pollental forhøjet, nævnes det også direkte på udendørs-kortet.
 
+**Foldede sektioner** — alle syv afsnit er `<details>` og viser deres konklusion som en chip i overskriften, når de er foldet sammen: intet er skjult, kun sammenfattet. Time for time sammenfatter hele vinduet, ikke kun de viste timer, så chippen ikke skifter, når listen foldes ud, og bruger samme grænse for "våd time" som rækkerne selv (≥ 0,05 mm eller ≥ 40 %). Ét sammenhængende stræk nævnes med klokkeslæt, flere spredte timer kun med antal — "kl. 7–22" ville love regn i hele mellemrummet.
+
+**Brede og smalle skærme** — layoutet har tre trin, fordi to af rækkerne har en naturlig mindstebredde. Timerækken kræver 780 px med alle otte kolonner; mellem 621 og 860 px viger UV og vindstød, og teksten får ellipse. Ugerækken kræver 402 px på én linje (navn, ikon, bane på mindst 146 px og tre chips på 88 px); under 560 px flytter temperaturbanen derfor ned på sin egen linje, hvor den samtidig bliver længere og lettere at aflæse. Begge trin er målt fra 320 til 1280 px, så siden aldrig kan scrolles vandret.
+
 Tallene er vejledende — en prognose er en prognose, og din terrasse kender du bedre end modellen.
 
 ## Filer
